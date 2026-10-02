@@ -124,7 +124,7 @@ API 文档：     见 §1.3
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
 - 构建漂移检测：同一主文件下 3 次比对哈希；同一地址返回不同内容 ⇒ 后端多节点版本不一致，记录。
 - **chunk 清单入口**（拿全量 JS 文件名）：`/asset-manifest.json`、`/webpack-manifest.json`、`runtime~main.*.js`（runtime chunk 含全部 chunk 映射）；抓不到清单时按常见名兜底猜路径：`/main.js /app.js /bundle.js /runtime.js /vendor.js /_next/static/_buildManifest.js`。
-- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。
+- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。**重跑幂等（阴性结论，干净环境三连跑验证）**：同 URL 重下原地覆盖；判定报告按 (file, url) 键 read-modify-write 合并，未动文件的历史判定保留；不同文件撞名自动加 `__父目录` 后缀并告警——追加 URL 重跑不会让报告行数/文件数翻倍。
 - **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
 - **下载判定联动（机械执行）**：提取器递归发现任意层级的 `_fetch_report.json`（safe_fetch 的报告常在 `./dl/` 子目录）——非 OK 判定（TRUNCATED / CL_MISSING / FAILED / HTTP_4xx）的文件**不进入提取**，排除计数入汇总；4xx 错误页里的 href 是支持链接/跳转目标，只记"存在被拦"信号，不进接口清单。判定文件自身同样不进提取。**报告损坏的降级三件套**：① 显式告警（含路径与异常原因，不静默停摆）；② `.hdr` 侧车重建判定——safe_fetch 给每个下载写自包含侧车（首行 `Status: <code>` + 响应头），报告损坏时按 Status+Content-Length 完整重建 verdict（覆盖 TRUNCATED 与 4xx；旧版无 Status 行的侧车退化为仅截断校验）；③ **退出码 1 = 判定报告损坏（结果未经过滤）**，链式调用可机械检测降级。注意与 safe_fetch 的退出码语义**不同**：safe_fetch 的 1 = 存在非 OK 判定或需重抓项——预期内的纯 404（确定性结果）也返回 1，不是下载器故障，别当降级处理。剩余边界如实声明：**无 .hdr 的文件无法复核**（外部来源文件），已进入提取。报告与侧车读取均容 BOM（utf-8-sig，同一宽容度）。"**无报告且无侧车**"才是正常态：报告缺失（手动拷贝目录、误删 json）但同目录存在 .hdr 时**侧车即权威、照常拦截**——否则 Spring Boot 错误体、Tomcat 堆栈这类高信息量 404 页会带着里面的路径混进提取产物（实测缝隙，侧车判定已不依赖报告存在）。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。
 - **内容嗅探兜底**：无判定文件时，.js 路径存成 HTML 错误页按 HTML 形态处理——扩展名与内容形态脱钩不再整页静默漏。
@@ -171,7 +171,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域>
 **盲区可见性（两件机械防线 + 一条诚实边界）**：
 
 1. **通道健康直方图**：精提报告固定打印各通道命中数（**零也在场**）——某通道整库为 0 本身是信号（裸 fetch 盲区修复前 fetch 恒 0 而无人看见）。
-2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。此前这道对账由人工承担，裸 fetch 正是粗筛兜住、精提漏掉、无人 diff 才静默存活到 eval 才暴露。
+2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。此前这道对账由人工承担，裸 fetch 正是粗筛兜住、精提漏掉、无人 diff 才静默存活到 eval 才暴露。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
 3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何形态探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端形态时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道。
 
 **参数名来源（入口清单「参数」列的三个来源，不再手填）**：① `extract_endpoints.py` CSV 的 `参数名` 列（url 容器对象里 `params:{...}`/`data:{...}` 的键名）与 `query` 列（URL 字面量查询串）；② 归档 URL 查询串（§2.5）；③ 语言包/配置里的权限词仅作候选排序线索，不当参数。路径占位符（`{id}`）在路径列，不与参数混。
