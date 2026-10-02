@@ -697,7 +697,7 @@ def main():
     ap.add_argument("--hidden", action="store_true", help="同时扫隐藏形态（action:/componentsUrl/...）")
     ap.add_argument("--csv", help="输出 CSV（UTF-8 BOM，Excel 可直接开）")
     ap.add_argument("--site", default="-",
-                    help="站点归属打标（subdomains.csv 的存活子域名；多站点按站点目录分次运行各传各的，"
+                    help="站点归属打标（站点清单中的存活站点，清单口径见 SKILL.md 输入节；多站点按站点目录分次运行各传各的，"
                          "缺省 '-'。归属在生成时打上，不事后补填——多站点几百行手工补必错）")
     ap.add_argument("--out", help="输出文本报告（UTF-8）——避免 PowerShell 管道 GBK 乱码")
     ap.add_argument("--log", help="控制台输出改写入该文件（UTF-8），不再打印")

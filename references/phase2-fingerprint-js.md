@@ -13,7 +13,7 @@
 | 报错页 | Spring Boot JSON 错误体、Tomcat 堆栈、框架原生 404 体 |
 | 缓存层头 | `Via: 1.1 varnish`、`X-Cache: Hit from cloudfront`、`Cf-Cache-Status`、`Age` |
 
-指纹记录格式：**组件名+版本串**（如 "Spring Boot 2.x / nginx 1.18 / Vue 2.6"）——后续漏洞比对的锚点。
+指纹记录格式：**组件名+版本串**（如 "Spring Boot 2.x / nginx 1.18 / Vue 2.6"）——用途是**选探测路径**（§1.1 矩阵按已命中指纹选行）与解释 404/401 形态；指纹表入产出，不对其做漏洞比对。
 
 ### §1.1 中间件与设备路径矩阵（逐路径 1 发 GET，403 / 404 也记录）
 
@@ -25,7 +25,7 @@
 | Jenkins | `/script`、`/manage` | |
 | Spring Boot Actuator | `/actuator/` 系列 | 优先级见下 |
 | GlassFish / Jetty / Resin | `/common/`、`/jolokia/`、`/resin-admin/` | |
-| 容器 / CI-CD（**路径级探针，不做端口扫描**——仅当服务暴露于 80/443 或反代后可见；开放端口本身用 phase1 的被动端口观察取） | Jenkins `/api/json`（匿名可读性）、GitLab `/api/v4/version`、Argo CD `/api/version`、Harbor `/api/v2.0/projects`、Docker `/version`、kubelet `/pods`、etcd 经反代 `/v2/keys/` | 命中即记录版本与匿名可达性，不深度枚举 |
+| 容器 / CI-CD（**路径级探针，不做端口扫描**——仅当服务暴露于 80/443 或反代后可见；开放端口不在本技能范围，记入报告信息缺口） | Jenkins `/api/json`（匿名可读性）、GitLab `/api/v4/version`、Argo CD `/api/version`、Harbor `/api/v2.0/projects`、Docker `/version`、kubelet `/pods`、etcd 经反代 `/v2/keys/` | 命中即记录版本与匿名可达性，不深度枚举 |
 | Citrix | `/vpn/index.html` | 边缘设备类，命中即记录型号 |
 | F5 BIG-IP | `/tmui/login.jsp` | |
 | FortiGate | `/remote/login` | |
@@ -44,7 +44,7 @@ Actuator 端点优先级（只读取证，不利用）：
 /actuator/gateway/routes   记录存在即可
 ```
 
-### §1.2 泄露路径清单（每项 1 发 GET；预算数值的唯一出处 = SKILL.md 阶段 2 规则（此处不复制，防漂移）；最后核验 2026-09，核验源=recon-skills `probes-and-wordlists` / HackTricks 同类仓库 diff——路径表只加不减，核验重点是"新框架要不要加"而非删旧）
+### §1.2 泄露路径清单（每项 1 发 GET；预算数值的唯一出处 = SKILL.md 阶段 2「探测预算」（此处不复制，防漂移）；最后核验 2026-09，核验源=recon-skills `probes-and-wordlists` / HackTricks 同类仓库 diff——路径表只加不减，核验重点是"新框架要不要加"而非删旧）
 
 **探测顺序**（§1.1–§1.3 合计路径数超预算一倍，按此优先级花预算，超即停）：① catch-all 基线 1 发（§1.4）→ ② robots.txt / sitemap.xml → ③ §1.3 API 文档族（命中即高价值）→ ④ 按已命中指纹选 §1.1 矩阵对应行（Java 栈才探 Java 行，不盲扫全表）→ ⑤ §1.2 其余按余量。未探测路径记入未闭环清单（信息缺口），不算丢弃。
 
@@ -118,7 +118,7 @@ API 文档：     见 §1.3
 
 大 JS 文件可能只下载一部分：HTTP 200、退出码 0，工具不报错。基于残缺文件的提取会漏接口。
 
-- 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6`（走代理加 `--proxy http://127.0.0.1:8080`）
+- 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（间隔 ≥2 秒是 SKILL.md 硬性规则 5 的要求，脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
 - 判定标准一条：**实收字节数 == 响应头 Content-Length**。不符重下。chunked 传输（无 CL）→ 判定 CHUNKED：**可用于提取**、产物标注"不可校验"，不进重试（重试也长不出 CL）。
 - 经验阈值：>700KB 的文件重点盯。
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
@@ -126,7 +126,7 @@ API 文档：     见 §1.3
 - **chunk 清单入口**（拿全量 JS 文件名）：`/asset-manifest.json`、`/webpack-manifest.json`、`runtime~main.*.js`（runtime chunk 含全部 chunk 映射）；抓不到清单时按常见名兜底猜路径：`/main.js /app.js /bundle.js /runtime.js /vendor.js /_next/static/_buildManifest.js`。
 - **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。
 - **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
-- **下载判定联动（机械执行）**：提取器递归发现任意层级的 `_fetch_report.json`（safe_fetch 的报告常在 `./dl/` 子目录）——非 OK 判定（TRUNCATED / CL_MISSING / FAILED / HTTP_4xx）的文件**不进入提取**，排除计数入汇总；4xx 错误页里的 href 是支持链接/跳转目标，只记"存在被拦"信号，不进接口清单。判定文件自身同样不进提取。**报告损坏的降级三件套**：① 显式告警（含路径与异常原因，不静默停摆）；② `.hdr` 侧车重建判定——safe_fetch 给每个下载写自包含侧车（首行 `Status: <code>` + 响应头），报告损坏时按 Status+Content-Length 完整重建 verdict（覆盖 TRUNCATED 与 4xx；旧版无 Status 行的侧车退化为仅截断校验）；③ **退出码 1**（对齐 safe_fetch 约定：0=正常，1=结果未经过滤），链式调用可机械检测降级。剩余边界如实声明：**无 .hdr 的文件无法复核**（外部来源文件），已进入提取。报告与侧车读取均容 BOM（utf-8-sig，同一宽容度）。"无报告"是正常态不走降级。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。
+- **下载判定联动（机械执行）**：提取器递归发现任意层级的 `_fetch_report.json`（safe_fetch 的报告常在 `./dl/` 子目录）——非 OK 判定（TRUNCATED / CL_MISSING / FAILED / HTTP_4xx）的文件**不进入提取**，排除计数入汇总；4xx 错误页里的 href 是支持链接/跳转目标，只记"存在被拦"信号，不进接口清单。判定文件自身同样不进提取。**报告损坏的降级三件套**：① 显式告警（含路径与异常原因，不静默停摆）；② `.hdr` 侧车重建判定——safe_fetch 给每个下载写自包含侧车（首行 `Status: <code>` + 响应头），报告损坏时按 Status+Content-Length 完整重建 verdict（覆盖 TRUNCATED 与 4xx；旧版无 Status 行的侧车退化为仅截断校验）；③ **退出码 1 = 判定报告损坏（结果未经过滤）**，链式调用可机械检测降级。注意与 safe_fetch 的退出码语义**不同**：safe_fetch 的 1 = 存在非 OK 判定或需重抓项——预期内的纯 404（确定性结果）也返回 1，不是下载器故障，别当降级处理。剩余边界如实声明：**无 .hdr 的文件无法复核**（外部来源文件），已进入提取。报告与侧车读取均容 BOM（utf-8-sig，同一宽容度）。"无报告"是正常态不走降级。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。
 - **内容嗅探兜底**：无判定文件时，.js 路径存成 HTML 错误页按 HTML 形态处理——扩展名与内容形态脱钩不再整页静默漏。
 - **sourcemap**：JS 尾部 `sourceMappingURL=`；**内联形态**（`sourceMappingURL=data:application/json;base64,...` 打进 JS 本身）base64 解码即得完整 map——比外链 .map 更隐蔽且常被忽略；历史 map 用 Wayback CDX `filter=original:.*\.js\.map$` 挖。三种来源的 `sourcesContent[]` 都是前端完整源码（含后来删除的硬编码密钥、内部接口、注释）+ 源码文件清单，**完全离线零新增请求**。仅取有明确引用或已存在的 map，不盲猜路径。
 
@@ -224,7 +224,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域>
 - "手机号"大批量命中 ⇒ 可能是毫秒时间戳的前 11 位；加前后非数字边界再数。
 - "内网 IP" ⇒ 可能是抓包代理自己写在错误头里的本机地址。
 - 取字段值前先 dump 一条完整记录看结构——真实值常在嵌套子对象里。
-- **公开标识 ≠ 密钥（定级规则，非排除规则）**：client_id、`dpl_*`、Supabase anon key、README 示例串——**永不入密钥级/高危级结论**；可作为**低级别**行入 leaks.csv（情报值：指向目标所用 SaaS 平台，是交接协议第五类 SaaS 悬挂验证的线索源），备注必须标「公开标识」。曾因与 delivery §1.5 类别枚举措辞互相矛盾导致两轮代理行为随机翻转（一轮全排除、一轮记为泄露）——本条为唯一权威。
+- **公开标识 ≠ 密钥（定级规则，非排除规则）**：client_id、`dpl_*`、Supabase anon key、README 示例串——**永不入密钥级/高危级结论**；可作为**低级别**行入 leaks.csv（情报值：指向目标所用 SaaS 平台），备注必须标「公开标识」。曾因与 delivery §1.5 类别枚举措辞互相矛盾导致两轮代理行为随机翻转（一轮全排除、一轮记为泄露）——本条为唯一权威。
 - 发现疑似真实密钥：记录证据即可，**不验证 live/dead**（用密钥调第三方 API 属后续独立任务，须用户批准）。
 
 ### §6.1 注释敏感线索（独立通道：`scripts/scan_comments.py`）
@@ -248,7 +248,7 @@ python scripts/scan_comments.py --dir <文本目录> --csv clues.csv
 - **证据本体规格**：上下文只来自所属注释块（不跨块、license 等已滤块不得倒灌），换行以 `⏎` 显式标记——上下文、行号、块内容三者必须互相印证，不得把多行伪装成一行。
 - 阴性也要报："注释 0 命中"是有效结论（历史上验证过整站注释无隐藏接口）。
 
-## §7 源码与文档侦察（零目标流量；查询对象是第三方平台，性质同阶段 1 被动源，SKILL.md 步骤⑧授权）
+## §7 源码与文档侦察（零目标流量；查询对象是第三方平台，授权依据 = SKILL.md 硬性规则 5）
 
 
 - GitHub 组织仓库：`api.github.com/orgs/<org>/repos?sort=updated` 看 visibility——新公开仓库即潜在泄露。

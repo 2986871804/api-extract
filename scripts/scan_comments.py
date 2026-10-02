@@ -152,7 +152,7 @@ def main():
     ap = argparse.ArgumentParser(description="注释敏感线索扫描（独立通道）")
     ap.add_argument("--dir", required=True, help="文本目录（递归，扫描面同 extract_endpoints）")
     ap.add_argument("--site", default="-",
-                    help="站点归属（subdomains.csv 的存活子域名；无归属场景显式记 '-'，规则见 delivery §1.5 站点列定义）")
+                    help="站点归属（站点清单中的存活站点，清单口径见 SKILL.md 输入节；无归属场景显式记 '-'，规则见 delivery §1.5 站点列定义）")
     ap.add_argument("--csv", help="线索 CSV（UTF-8 BOM）")
     ap.add_argument("--out", help="结果报告写入该文件（UTF-8），控制台照常打印")
     ap.add_argument("--log", help="控制台输出改写入该文件（UTF-8），不再打印")

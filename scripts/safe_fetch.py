@@ -14,6 +14,8 @@ safe_fetch.py —— 带「完整性校验 + 退避重试」的资源下载器
   urls.txt 每行一个路径（/static/js/app.js）或完整 URL。
   输出：文件本体 + 每个文件的 .hdr，以及末尾的判定表（OK / TRUNCATED / CL_MISSING / FAILED /
         HTTP_<状态码>，如 HTTP_403——响应完整但非成功，4xx 为确定性结果不重试）。
+  退出码：0 = 全部 OK/CHUNKED；1 = 存在 4xx 或需重抓项（TRUNCATED/FAILED/CL_MISSING）——
+        预期内的纯 404 也返回 1，勿当下载器故障。
 """
 import argparse, os, re, ssl, sys, time, json
 import urllib.request, urllib.error

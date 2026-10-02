@@ -53,7 +53,7 @@ curl -k -s --proxy http://127.0.0.1:8080 -A "$UA" -m 20 -D resp.hdr -o resp.body
 - `hook_inject.js` 无依赖（控制台粘贴或 evaluate 注入）。
 - `yakit_db_probe.py` 仅 Yakit 用户有意义。
 
-统一落盘参数（五个 Python 脚本一致，均 UTF-8，Windows 下避免管道 GBK 乱码；**`--log` 不要落在 `--out` 下载目录内**——下一轮提取会把它当文本文件扫入）：
+统一落盘参数（六个 Python 脚本一致，均 UTF-8，Windows 下避免管道 GBK 乱码；**`--log` 不要落在 `--out` 下载目录内**——下一轮提取会把它当文本文件扫入）：
 
 | 脚本 | `--out` | `--log` |
 |---|---|---|
@@ -61,6 +61,7 @@ curl -k -s --proxy http://127.0.0.1:8080 -A "$UA" -m 20 -D resp.hdr -o resp.body
 | extract_apis.py | 报告文件（仍打印） | 控制台输出改写文件（不打印） |
 | extract_endpoints.py | 报告文件（仍打印）；另有 `--csv` 数据、`--site` 归属打标 | 控制台输出改写文件（不打印） |
 | scan_comments.py | 报告文件（仍打印）；另有 `--csv` 数据、`--site` 归属打标 | 控制台输出改写文件（不打印） |
+| mine_responses.py | 报告文件（仍打印）；另有 `--csv` 数据、`--site` 归属打标 | 控制台输出改写文件（不打印） |
 | yakit_db_probe.py | 报告文件（重定向） | 同 `--out`（本脚本结果即控制台输出） |
 
 脚本自检（离线，零目标请求）：
