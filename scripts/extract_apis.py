@@ -67,8 +67,8 @@ def render(base, reconcile_fine=None):
             if f == FETCH_REPORT:
                 dl_excluded += 1
                 continue
-            if (os.path.abspath(root), f) in excl or (report_errors and hdr_bad(path)):
-                dl_excluded += 1                       # 非 OK 判定（或侧车回退）：不得用于提取
+            if (os.path.abspath(root), f) in excl or hdr_bad(path):
+                dl_excluded += 1                       # 非 OK 判定（或侧车拦截，报告缺失时同样生效）：不得用于提取
                 continue
             if not f.lower().endswith(TEXT_EXTS):
                 skipped_ext += 1
@@ -101,7 +101,7 @@ def render(base, reconcile_fine=None):
 
     L = []
     if report_errors:
-        L.append("⚠ 判定报告读取失败 %d 份——排除机制未生效，非 OK 文件已全部进入粗筛" % len(report_errors))
+        L.append("⚠ 判定报告读取失败 %d 份——报告级排除未生效；.hdr 侧车拦截仍生效（见排除计数）" % len(report_errors))
     if dl_excluded:
         L.append("（因下载判定排除 %d 个文件——非 OK 不得用于提取）" % dl_excluded)
     if skipped_ext:

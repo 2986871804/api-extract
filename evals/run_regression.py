@@ -3,7 +3,7 @@
 """回归自检（离线，零网络，零目标请求）。
 
 分组覆盖面（断言数以运行输出为准，数字不复制进文档防漂移）：
-  A 判定联动   _fetch_report 排除键、.hdr 侧车降级重建（Status+CL+chunked、旧侧车退化）
+  A 判定联动   _fetch_report 排除键、.hdr 侧车重建（Status+CL+chunked、旧侧车退化、报告缺失时侧车兜底）
   B 路径重建   concat/模板串占位符、无前导斜杠归一化、绝对URL拆基址、前缀常量回填、参数名
   C 通道覆盖   hidden/concat/json/css/html/fetch/框架调用点(call)/ws/sse/wss-url/graphql 各通道有产出
   D 注释扫描   .vue 双区切分（模板 // 不误切）、凭据触发词、内网置信二道判据、license 抑制
@@ -83,6 +83,16 @@ w(os.path.join(dl, "old.js"), "ab")
 w(os.path.join(dl, "old.js.hdr"), "Content-Length: 5\n")                # 旧侧车无 Status
 chk("A7 旧侧车退化为截断校验", ee.hdr_verdict(os.path.join(dl, "old.js")) == "TRUNCATED")
 chk("A8 无侧车不排除", ee.hdr_verdict(os.path.join(dl, "不存在.js")) is None)
+
+# A9 报告缺失但侧车在场：侧车即权威，4xx 错误体不得混进提取（实测缝隙的钉子）
+dl2 = os.path.join(tmp, "dl2")
+w(os.path.join(dl2, "gone.js"), '{"code":404}')
+w(os.path.join(dl2, "gone.js.hdr"), "Status: 404\nContent-Length: 11\n")
+w(os.path.join(dl2, "fine.js"), 'fetch("/api/ok/one");\n')
+kept, dl_exc, _errs = ee.apply_fetch_filter(
+    [os.path.join(dl2, "gone.js"), os.path.join(dl2, "fine.js")], [])
+chk("A9 报告缺失时侧车仍拦 4xx", kept == [os.path.join(dl2, "fine.js")]
+    and dl_exc.get("HTTP_404(hdr回退)") == 1)
 
 # ---------------------------------------------------------------- B/C 提取（同文件驱动）
 print("== B 路径重建 ==")

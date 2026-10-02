@@ -167,8 +167,8 @@ def main():
                 continue
             p = os.path.join(root, f)            # 先赋值——下方 hdr_bad(p) 降级路径依赖它（曾因顺序在损坏报告场景崩）
             if f == FETCH_REPORT or (os.path.abspath(root), f) in excl \
-                    or (report_errors and hdr_bad(p)):
-                dl_excluded += 1
+                    or hdr_bad(p):
+                dl_excluded += 1                       # 侧车拦截不依赖报告存在（与 extract_endpoints 同口径）
                 continue
             if p.lower().endswith((".json", ".map")):
                 skipped_json += 1
@@ -184,7 +184,7 @@ def main():
     if args.site == "-":
         L.append("⚠ 未传 --site：站点列全部为 '-'（多站点场景须可回答归属，规则见 delivery §1.5）")
     if report_errors:
-        L.append("⚠ 判定报告读取失败 %d 份——排除机制未生效，非 OK 文件已全部进入扫描" % len(report_errors))
+        L.append("⚠ 判定报告读取失败 %d 份——报告级排除未生效；.hdr 侧车拦截仍生效（见排除计数）" % len(report_errors))
     L.append("扫描 %d 个文件（JSON/map 类无注释语法跳过 %d 个；因下载判定排除 %d 个）｜"
              "license 块滤除 %d 个｜"
              "重复注释块合并 %d 组｜线索 %d 条" %

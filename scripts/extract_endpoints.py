@@ -150,9 +150,30 @@ def hdr_verdict(path):
 
 
 def hdr_bad(path):
-    """降级模式下该文件是否应被排除（侧车重建判定为坏）。CHUNKED 可用于提取，不算坏。"""
+    """该文件是否应被排除——按 .hdr 侧车重建判定（**不依赖报告存在**：报告缺失但侧车在场时
+    侧车即权威——手动拷贝丢报告/误删 json 后 4xx 错误体仍被拦下，实测缝隙）。CHUNKED 可用于提取，不算坏。"""
     v = hdr_verdict(path)
     return v is not None and v not in ("OK", "CHUNKED")
+
+
+def apply_fetch_filter(files, report_paths):
+    """统一过滤：判定报告排除 + .hdr 侧车重建（报告损坏或缺失都兜）。
+    返回 (kept, dl_excluded计数, report_errors)。--files 与 --dir 走同一条路径。"""
+    excl, report_errors = load_fetch_exclusions(report_paths)
+    dl_excluded = collections.Counter()
+    kept = []
+    for f in files:
+        b = os.path.basename(f)
+        key = (os.path.dirname(os.path.abspath(f)), b)
+        if b == FETCH_REPORT:                                # 判定文件自身不进提取
+            dl_excluded["REPORT"] += 1
+        elif key in excl:                                    # 非 OK 判定：仅对与报告同目录的文件生效
+            dl_excluded[excl[key]] += 1
+        elif hdr_bad(f):                                     # 侧车重建（Status+CL），报告缺失时同样生效
+            dl_excluded["%s(hdr回退)" % hdr_verdict(f)] += 1
+        else:
+            kept.append(f)
+    return kept, dl_excluded, report_errors
 
 
 # 主机常量定义（P2 前缀解析）：API_HOST = "https://x.com" / API_HOST: "..."
@@ -753,21 +774,7 @@ def main():
     if not files:
         ap.error("请用 --dir 或 --files 提供至少一个文本文件")
     # 统一过滤：--files 与 --dir 走同一条路径，不依赖填充时序
-    excl, report_errors = load_fetch_exclusions(report_paths)
-    dl_excluded = collections.Counter()
-    kept = []
-    for f in files:
-        b = os.path.basename(f)
-        key = (os.path.dirname(os.path.abspath(f)), b)
-        if b == FETCH_REPORT:                                # 判定文件自身不进提取
-            dl_excluded["REPORT"] += 1
-        elif key in excl:                                    # 非 OK 判定：仅对与报告同目录的文件生效
-            dl_excluded[excl[key]] += 1
-        elif report_errors and hdr_bad(f):                   # 降级回退：侧车重建判定（Status+CL）
-            dl_excluded["%s(hdr回退)" % hdr_verdict(f)] += 1
-        else:
-            kept.append(f)
-    files = kept
+    files, dl_excluded, report_errors = apply_fetch_filter(files, report_paths)
 
     consts = build_consts(files)
 
