@@ -1,6 +1,6 @@
 <!-- 阶段 2 实现细节：指纹、JS 下载、接口提取、敏感信息。产出对接见 SKILL.md 数据流；状态词以 delivery.md §0 为准。 -->
 
-# 阶段 2：内容测绘
+# 阶段 2：提取（内容测绘）
 
 ## §1 组件指纹（从真实响应取，不猜）
 
@@ -38,7 +38,7 @@ Actuator 端点优先级（只读取证，不利用）：
 ```
 /actuator/env           环境变量（DB 凭据、key）
 /actuator/heapdump      JVM 堆（内存中的口令；下载取证，不利用）
-/actuator/mappings      全部 URL 映射——直接并入接口清单
+/actuator/mappings      全部 URL 映射——直接并入口清单
 /actuator/configprops   配置属性
 /actuator/beans /actuator/threaddump
 /actuator/gateway/routes   记录存在即可
@@ -74,11 +74,11 @@ API 文档：     见 §1.3
 | 通用 | `/.well-known/openapi.json`、`/application.wadl`（JAX-RS 遗留） |
 | GraphQL | `/graphql`、`/gql`、`/graphiql`、`/api/graphql`、`/v1/graphql`、`/altair`、`/playground` |
 
-- 命中 swagger / openapi：提取未文档化字段、admin 请求示例、弃用但仍活跃的端点、与过滤/排序/ID/租户相关的参数名，`components.schemas` 里的权限字段（isAdmin/role/tenantId）；`jq '.paths|keys'` 直接出端点清单。
+- 命中 swagger / openapi：提取未文档化字段、admin 请求示例、弃用但仍活跃的端点、与过滤/排序/ID/租户相关的参数名，`components.schemas` 里的权限字段（isAdmin/role/tenantId）；`jq '.paths|keys'` 直接得到全部接口路径。
 - GraphQL 命中：introspection **仅当站点支持 GET 查询串形态（`?query=`）时**执行 1 发确认可否匿名执行；仅接受 POST 的（硬性规则 1 禁发）记录"存在但未测"，不做深度查询；UI 残留标记（响应含 graphiql/playground/altair 字符串）记录。
 - 版本漂移：`/api/v1/`、`/api/v2/`、`/api/mobile/v1/`、`/legacy/` 各挑 1 个代表路径确认存活。
 
-### §1.4 命中确认签名 + catch-all 基线（防"200 即泄露"误报）
+### §1.4 命中确认签名 + catch-all 基线（业界亦称 soft 404 / SPA fallback；防「200 即泄露」误报）
 
 1. **先打 catch-all 基线**：GET `/<随机串>-check-xyz`。返回 200 + HTML + >500B + 无敏感关键词 ⇒ 该站是 catch-all（任意路径都 200），**本站所有"200 = 命中"的判定作废**，只能靠内容签名判。
 2. **每路径内容确认签名**（200 之外的第二判据）：
@@ -92,7 +92,7 @@ API 文档：     见 §1.3
 | `/server-status` | "Apache Server Status" |
 | phpinfo | "PHP Version" |
 
-### §1.6 指纹规则库（GitHub 现成资源，离线比对）
+### §1.6 指纹规则库（GitHub 现成资源，离线比对）<!-- §1.5 编号留空，避让 delivery §1.5 -->
 
 指纹不自己维护矩阵——用社区维护的规则库对**已落盘的响应集**做离线匹配，零新增请求：
 
@@ -119,14 +119,14 @@ API 文档：     见 §1.3
 大 JS 文件可能只下载一部分：HTTP 200、退出码 0，工具不报错。基于残缺文件的提取会漏接口。
 
 - 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（`--gap` 数值以 SKILL.md「速率与预算总表」为准，脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
-- 判定标准一条：**实收字节数 == 响应头 Content-Length**。不符重下。chunked 传输（无 CL）→ 判定 CHUNKED：**可用于提取**、产物标注"不可校验"，不进重试（重试也长不出 CL）。
+- 判定标准一条：**实收字节数 == 响应头 Content-Length**。不符重抓。chunked 传输（无 CL）→ 判定 CHUNKED：**可用于提取**、产物标注"不可校验"，不进重试（重试也长不出 CL）。
 - 经验阈值：>700KB 的文件重点盯。
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
 - 构建漂移检测：同一主文件下 3 次比对哈希；同一地址返回不同内容 ⇒ 后端多节点版本不一致，记录。
 - **chunk 清单入口**（拿全量 JS 文件名）：`/asset-manifest.json`、`/webpack-manifest.json`、`runtime~main.*.js`（runtime chunk 含全部 chunk 映射）；抓不到清单时按常见名兜底猜路径：`/main.js /app.js /bundle.js /runtime.js /vendor.js /_next/static/_buildManifest.js`。
-- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。**重跑幂等（阴性结论，干净环境三连跑验证）**：同 URL 重下原地覆盖；判定报告按 (file, url) 键 read-modify-write 合并，未动文件的历史判定保留；不同文件撞名自动加 `__父目录` 后缀并告警——追加 URL 重跑不会让报告行数/文件数翻倍。
+- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。**重跑幂等（阴性结论，三连跑实测）**：追加 URL 重跑安全——同 URL 重抓原地覆盖、历史判定保留、撞名自动改名并告警，报告/文件数不翻倍（机制见 safe_fetch docstring）。
 - **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
-- **下载判定联动（机械执行，四个要点）**：① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（口径同 SKILL.md 规则 4 与 delivery §0）；② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进接口清单；③ 判定文件自身不进提取；④ **「无报告且无侧车」才是正常态**——报告缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截；无侧车的外部来源文件如实声明无法复核、已进入提取。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。脚本侧机制（侧车重建、报告合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring；改动任一脚本后跑 evals 回归。<!-- 历史：报告损坏曾需「三件套」降级（告警/侧车重建/退出码 1）；侧车拦截曾依赖报告存在，「无报告+侧车在场」缝隙为实测发现后修复；safe_fetch 与提取脚本退出码语义不同（前者 4xx 也返回 1）。详见 git log 与脚本注释 -->
+- **下载判定联动（机械执行，四个要点）**：① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（口径同 SKILL.md 规则 4 与 delivery §0）；② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进入口清单；③ 判定文件自身不进提取；④ **「无报告且无侧车」才是正常态**——报告缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截；无侧车的外部来源文件如实声明无法复核、已进入提取。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。脚本侧机制（侧车重建、报告合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring；改动任一脚本后跑 evals 回归。<!-- 历史：报告损坏曾需「三件套」降级（告警/侧车重建/退出码 1）；侧车拦截曾依赖报告存在，「无报告+侧车在场」缝隙为实测发现后修复；safe_fetch 与提取脚本退出码语义不同（前者 4xx 也返回 1）。详见 git log 与脚本注释 -->
 - **内容嗅探兜底**：无判定文件时，.js 路径存成 HTML 错误页按 HTML 形态处理——扩展名与内容形态脱钩不再整页静默漏。
 - **sourcemap**：JS 尾部 `sourceMappingURL=`；**内联形态**（`sourceMappingURL=data:application/json;base64,...` 打进 JS 本身）base64 解码即得完整 map——比外链 .map 更隐蔽且常被忽略；历史 map 用 Wayback CDX `filter=original:.*\.js\.map$` 挖。三种来源的 `sourcesContent[]` 都是前端完整源码（含后来删除的硬编码密钥、内部接口、注释）+ 源码文件清单，**完全离线零新增请求**。仅取有明确引用或已存在的 map，不盲猜路径。
 
@@ -145,7 +145,7 @@ curl "web.archive.org/web/<timestamp>id_/<original_url>"
 
 - **能拿**：历史 GET 的完整响应体（接口包络、字段结构、脱敏前的数据形态）、URL 查询串参数（随 original 完整保留）——参数结构的系统化来源，补手工填参。
 - **拿不到**：POST 请求体。Wayback 的 capture 单元是爬虫的 GET 响应，请求载荷不入库；CDX 也无 method 字段。别去归档里找提交表单的 POST。
-- 归档端点可能已死/已易主：回捞结果照常进入口清单（来源=归档），复验存活后才算已验证。
+- 归档端点可能已死/已易主：回捞结果照常进入口清单（来源=历史归档），复验存活后才算已验证。
 - 请求对象是 web.archive.org（第三方），不占目标预算；对归档端保持 ≤1 请求/秒。
 
 ## §3 接口提取：静态路线（必跑）
@@ -153,7 +153,7 @@ curl "web.archive.org/web/<timestamp>id_/<original_url>"
 ```bash
 python scripts/extract_apis.py <js目录>          # 粗筛：分级+调用点分类
 # 精提（多站点：按站点目录分次运行，每次 --site 传该站点——归属生成时打标）：
-python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域> --hidden --csv out.csv
+python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hidden --csv out.csv
 ```
 
 提取规则：
@@ -171,7 +171,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域>
 **盲区可见性（两件机械防线 + 一条诚实边界）**：
 
 1. **通道健康直方图**：精提报告固定打印各通道命中数（**零也在场**）——某通道整库为 0 本身是信号（裸 fetch 盲区修复前 fetch 恒 0 而无人看见）。
-2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。此前这道对账由人工承担，裸 fetch 正是粗筛兜住、精提漏掉、无人 diff 才静默存活到 eval 才暴露。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
+2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
 3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何形态探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端形态时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道。
 
 **参数名来源（入口清单「参数」列的三个来源，不再手填）**：① `extract_endpoints.py` CSV 的 `参数名` 列（url 容器对象里 `params:{...}`/`data:{...}` 的键名）与 `query` 列（URL 字面量查询串）；② 归档 URL 查询串（§2.5）；③ 语言包/配置里的权限词仅作候选排序线索，不当参数。路径占位符（`{id}`）在路径列，不与参数混。
@@ -224,7 +224,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域>
 - "手机号"大批量命中 ⇒ 可能是毫秒时间戳的前 11 位；加前后非数字边界再数。
 - "内网 IP" ⇒ 可能是抓包代理自己写在错误头里的本机地址。
 - 取字段值前先 dump 一条完整记录看结构——真实值常在嵌套子对象里。
-- **公开标识 ≠ 密钥（定级规则，非排除规则）**：client_id、`dpl_*`、Supabase anon key、README 示例串——**永不入密钥级/高危级结论**；可作为**低级别**行入 leaks.csv（情报值：指向目标所用 SaaS 平台），备注必须标「公开标识」。曾因与 delivery §1.5 类别枚举措辞互相矛盾导致两轮代理行为随机翻转（一轮全排除、一轮记为泄露）——本条为唯一权威。
+- **公开标识 ≠ 密钥（定级规则，非排除规则）**：client_id、`dpl_*`、Supabase anon key、README 示例串——**永不入密钥级/高危级结论**；可作为**低级别**行入 leaks.csv（情报值：指向目标所用 SaaS 平台），备注必须标「公开标识」。
 - 发现疑似真实密钥：记录证据即可，**不验证 live/dead**（用密钥调第三方 API 属后续独立任务，须用户批准）。
 
 ### §6.1 注释敏感线索（独立通道：`scripts/scan_comments.py`）
@@ -276,9 +276,8 @@ iOS IPA：`unzip app.ipa` → `Payload/*.app`：`Info.plist` 的 URL schemes、�
 
 ## 产出
 
+产物并入 delivery §1/§1.5 契约——列名、来源词表值、状态词表均以其为准，此处不复制。phase2 特有事项：
 
-- 指纹表（组件名+版本串+证据响应头；含 §1.1–§1.4 命中记录）
-- `入口清单.csv` 新增条目：URL、方法、参数（来源见 §3 参数名来源）、基址归属、来源（静态/运行时/归档/移动端/两源重合），状态=未验证（词表见 delivery.md §0）；`wss://` 命中同入清单（方法列记 WSS，状态未验证）；备注可标高价值类别（admin/internal/debug、upload/import/export/download、user/account/order 类 IDOR 高发、search/query/filter 类）
-- 泄露点清单（每条附 40 字符上下文证据）
-- 注释线索清单（§6.1 独立通道产出：中文凭据/内网裸地址/注释旧接口；核验后才升级进泄露点清单）
+- 指纹表含 §1.1–§1.4 命中记录；`wss://` 命中同入口清单（方法列记 WSS）
+- 备注可标高价值类别（admin/internal/debug、upload/import/export/download、user/account/order 类 IDOR 高发、search/query/filter 类）
 - 报告尾含**反查索引**（接口 → 全部来源文件，完整不截断）——400 个 chunk 时定位"这条接口是哪个 chunk 贡献的"不再人肉翻列
