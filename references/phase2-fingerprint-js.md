@@ -15,7 +15,7 @@
 | 报错页 | Spring Boot JSON 错误体、Tomcat 堆栈、框架原生 404 体 |
 | 缓存层头 | `Via: 1.1 varnish`、`X-Cache: Hit from cloudfront`、`Cf-Cache-Status`、`Age` |
 
-指纹记录格式：**组件名+版本串**（如 "Spring Boot 2.x / nginx 1.18 / Vue 2.6"）——用途是**选探测路径**（§1.1 矩阵按已命中指纹选行）与解释 404/401 形态；指纹表入产出，不对其做漏洞比对。
+指纹记录格式：**组件名+版本串**（如 "Spring Boot 2.x / nginx 1.18 / Vue 2.6"）——用途是**选探测路径**（§1.1 矩阵按已命中指纹选行）与解释 404/401 响应特征；指纹表入产出，不对其做漏洞比对。
 
 ### §1.1 中间件与设备路径矩阵（逐路径 1 发 GET，403 / 404 也记录）
 
@@ -77,7 +77,7 @@ API 文档：     见 §1.3
 | GraphQL | `/graphql`、`/gql`、`/graphiql`、`/api/graphql`、`/v1/graphql`、`/altair`、`/playground` |
 
 - 命中 swagger / openapi：提取未文档化字段、admin 请求示例、弃用但仍活跃的端点、与过滤/排序/ID/租户相关的参数名，`components.schemas` 里的权限字段（isAdmin/role/tenantId）；`jq '.paths|keys'` 直接得到全部接口路径。
-- GraphQL 命中：introspection **仅当站点支持 GET 查询串形态（`?query=`）时**执行 1 发确认可否匿名执行；仅接受 POST 的（硬性规则 1 禁发）记录"存在但未测"，不做深度查询；UI 残留标记（响应含 graphiql/playground/altair 字符串）记录。
+- GraphQL 命中：introspection **仅当站点支持 GET 查询串形式（`?query=`）时**执行 1 发确认可否匿名执行；仅接受 POST 的（硬性规则 1 禁发）记录"存在但未测"，不做深度查询；UI 残留标记（响应含 graphiql/playground/altair 字符串）记录。
 - 版本漂移：`/api/v1/`、`/api/v2/`、`/api/mobile/v1/`、`/legacy/` 各挑 1 个代表路径确认存活。
 
 ### §1.4 命中确认特征 + catch-all 基线（业界亦称 soft 404 / SPA fallback；防「200 即泄露」误报）
@@ -145,7 +145,7 @@ curl "web.archive.org/web/<timestamp>id_/<original_url>"
 
 价值与边界：
 
-- **能拿**：历史 GET 的完整响应体（接口包络、字段结构、脱敏前的数据形态）、URL 查询串参数（随 original 完整保留）——参数结构的系统化来源，补手工填参。
+- **能拿**：历史 GET 的完整响应体（接口包络、字段结构、脱敏前的数据结构）、URL 查询串参数（随 original 完整保留）——参数结构的系统化来源，补手工填参。
 - **拿不到**：POST 请求体。Wayback 的 capture 单元是爬虫的 GET 响应，请求载荷不入库；CDX 也无 method 字段。别去归档里找提交表单的 POST。
 - 归档端点可能已死/已易主：回捞结果照常进入口清单（来源=历史归档），复核存活后才算已验证。
 - 请求对象是 web.archive.org（第三方），不占目标预算；对归档端保持 ≤1 请求/秒。
@@ -174,7 +174,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 
 1. **通道健康直方图**：精提报告固定打印各通道命中数（**零也在场**）——某通道整库为 0 本身是信号（裸 fetch 盲区修复前 fetch 恒 0 而无人看见）。
 2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
-3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何形态探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端形态时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道。
+3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端写法时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道。
 
 **参数名来源（入口清单「参数」列的三个来源，不再手填）**：① `extract_endpoints.py` CSV 的 `参数名` 列（url 容器对象里 `params:{...}`/`data:{...}` 的键名）与 `query` 列（URL 字面量查询串）；② 归档 URL 查询串（§2.5）；③ 语言包/配置里的权限词仅作候选排序线索，不当参数。路径占位符（`{id}`）在路径列，不与参数混。
 
@@ -202,7 +202,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 
 按顺序在 JS 里找：
 
-1. axios 封装模块的 `baseURL:`（grep `baseURL:[^,]{0,40}`）——顺带拿到鉴权头格式、成功判据、超时。常见鉴权头形态记录进入口清单备注：`Authorization: Bearer`（OAuth2/JWT）、`X-API-Key`、`X-Auth-Token`、自定义 token 头。
+1. axios 封装模块的 `baseURL:`（grep `baseURL:[^,]{0,40}`）——顺带拿到鉴权头格式、成功判据、超时。常见鉴权头写法记录进入口清单备注：`Authorization: Bearer`（OAuth2/JWT）、`X-API-Key`、`X-Auth-Token`、自定义 token 头。
 2. 主机常量导出表 / 租户配置（grep `API_HOST`、`_HOST =`、`Host:"https://`）——常一次读出全部后端域名与 Cookie 作用域。
 3. 构建时注入的环境变量：`NODE_ENV:"production"` 附近 900 字符；**前端构建前缀** `VITE_*` / `REACT_APP_*` / `NEXT_PUBLIC_*`（dev 配置残留时整组泄露，如 VITE_JWT_SECRET）。
 4. 后端托管平台模式：`*.fly.dev / azurewebsites.net / vercel.app / netlify.app / supabase.co / r2.dev`——`dpl_*`（Vercel 部署 ID）与 Supabase anon key 是公开值，只记 URL 不当密钥。
@@ -233,7 +233,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 
 正则形状的密钥全文 grep 能撞上（不分注释与否），但**注释里**的三类没有形状可撞，只能按"注释 + 触发词"找：
 
-| 类别 | 形态 |
+| 类别 | 匹配式 |
 |---|---|
 | 中文/英文凭据 | 触发词（密码/口令/账号/用户名/凭据/密钥/secret/token/apikey…）+ 紧随的值 |
 | 内网裸地址 | RFC1918 段（可带端口）+ `.internal/.corp/.lan/.local` 主机名 |
