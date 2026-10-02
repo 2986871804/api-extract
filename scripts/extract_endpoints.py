@@ -649,6 +649,27 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                          "可疑": "裸 fetch 首参字面量", "来源文件": os.path.basename(path),
                          "值表达式": m.group(2)[:160]})
 
+    # 框架调用点首参字面量（phase2 §3 规则 7）：axios.get / this.$http.get / this.http.get<T> /
+    # request.post——粗筛的宽松串正则只兜得住带 / 或 api 前缀的写法，this.$http.get("user/profile")
+    # 这类无前缀相对路径两边都看不见（实测双漏，对账只 diff 粗筛∩精提兜不住双漏），必须成本通道。
+    # 只收字面量首参（含可选泛型参数 this.http.get<T>），动态首参不猜。
+    for m in re.finditer(
+            r'(?:axios|\$?http|request)\s*\.\s*([a-z]+)(?:<[^>(]{0,40}>)?\s*\(\s*(["\'])'
+            r'([^"\']{2,200})\2', text):
+        p, q, _ = normalize(m.group(3))
+        # 结果过滤同 hidden 通道：要像接口（有斜杠、无空格/CJK），挡掉 send("message") 类纯文案参数
+        if not p or len(p) < 4 or "/" not in p \
+                or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
+            stats["call噪声"] += 1
+            continue
+        stats["call形态"] += 1
+        recs.append({"接口路径": p, "基路径": base_of(p),
+                     "请求方式": (m.group(1) or "?").upper(), "形态": "call",
+                     "含占位符": "否",
+                     "query": ("?" + q) if q else "", "参数名": "",
+                     "可疑": "框架调用点（axios/$http/http/request）", "来源文件": os.path.basename(path),
+                     "值表达式": m.group(3)[:160]})
+
     # WebSocket / SSE / GraphQL 操作名（产出承诺必须有提取通道）
     for m in re.finditer(r'new\s+WebSocket\s*\(([^)]{2,200})\)', text):
         toks = _tokenize_value(m.group(1))
@@ -807,8 +828,8 @@ def main():
     # （裸 fetch 盲区就是 eval 抓出来的：修复前该直方图里 fetch 恒 0 而无人看见）
     chans = [("url", "url形态"), ("hidden", "hidden形态"), ("concat", "concat形态"),
              ("json", "json形态"), ("css", "css形态"), ("html", "html形态"),
-             ("fetch", "fetch形态"), ("ws/wss", "ws形态"), ("sse", "sse形态"),
-             ("graphql", "graphql形态"), ("absolute", "绝对URL")]
+             ("fetch", "fetch形态"), ("call", "call形态"), ("ws/wss", "ws形态"),
+             ("sse", "sse形态"), ("graphql", "graphql形态"), ("absolute", "绝对URL")]
     L.append("通道命中直方图（零也是信号，勿略过）：" +
              " · ".join("%s %d" % (n, stats.get(k, 0)) for n, k in chans))
     L.append("")

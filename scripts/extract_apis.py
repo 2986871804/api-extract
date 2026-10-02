@@ -111,11 +111,11 @@ def render(base, reconcile_fine=None):
         items = sorted(buckets[(g, cls)])
         L.append(f'### grade{g}::{cls} ({len(items)})')
         for s, f in items:
-            L.append(f'  {s}    <{f[:12]}>')
+            L.append(f'  {s}    <{f}>')
         L.append('')
     L.append(f'### hosts ({len(hosts)})')
     for u, f in sorted(hosts):
-        L.append(f'  {u}    <{f[:12]}>')
+        L.append(f'  {u}    <{f}>')
     L.append('')
 
     # 粗筛/精提对账（--reconcile-fine）：粗筛抓到而精提漏掉的路径 = 精提通道盲区候选。

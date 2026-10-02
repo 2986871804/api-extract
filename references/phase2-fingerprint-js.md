@@ -164,7 +164,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域>
 4. **不以 `/` 开头的接口路径是真实存在的**（`url:"face/batchImport"`），归一化补 `/`，不过滤。
 5. **隐藏接口第二遍**（`--hidden`）：上传组件的 `action:`、`uploadUrl = "..."` 等 **`:` 键与 `=` 赋值两种形态都收**（赋值取值带语句边界与 ASI 续行启发）的变量承载地址不经过 axios 封装，只扫 `url:` 必漏；变量声明与调用点分处两地，要配对反查。
 6. **交叉验证防噪声**：隐藏形态的命中若与已知接口零重合，先怀疑规则误抓（图表库/播放器内部字段），不急着入清单。
-7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`。
+7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态），通道直方图与粗筛/精提对账对其生效。曾长期"只是规则承诺"（双漏实测：`this.$http.get("user/profile")` 无 `/` 无 api 前缀，粗筛宽松串正则与精提均不可见）。
 8. **WebSocket / SSE / GraphQL 通道**：`new WebSocket(...)`、`new EventSource(...)` 的值表达式按占位符规则重建（方法列记 WSS / SSE）；`wss?://` 字面量记形态 wss-url；`operationName:` 记形态 graphql-op（配合 /graphql 端点用）。均有提取产出，不再只是规则承诺。
 9. **前缀常量回填**：`{API_HOST}` 类前缀占位符对照全文件常量表（`NAME = "https://..."` / `wss://`）自动回填基址并剥占位符；表里没有才标"需人工解析"。占位符在路径中段的不剥（防破坏路径）。
 

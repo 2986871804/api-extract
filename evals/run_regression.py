@@ -5,7 +5,7 @@
 分组覆盖面（断言数以运行输出为准，数字不复制进文档防漂移）：
   A 判定联动   _fetch_report 排除键、.hdr 侧车降级重建（Status+CL+chunked、旧侧车退化）
   B 路径重建   concat/模板串占位符、无前导斜杠归一化、绝对URL拆基址、前缀常量回填、参数名
-  C 通道覆盖   hidden/concat/json/css/html/fetch/ws/sse/wss-url/graphql 各通道有产出
+  C 通道覆盖   hidden/concat/json/css/html/fetch/框架调用点(call)/ws/sse/wss-url/graphql 各通道有产出
   D 注释扫描   .vue 双区切分（模板 // 不误切）、凭据触发词、内网置信二道判据、license 抑制
   E 响应体挖掘 五模式、数字段/uuid 归一化、危险词标记
   F 粗筛分级   grade A/B/C 路径分级
@@ -101,6 +101,12 @@ w(js, (
     'var operationName="ListUsers";\n'
     'uploadDhFileUrl = "/dh/uploadDhFile";\n'
     'fn("".concat("/api/v2/",id,"/orders"));\n'
+    'axios.get("api/orders/list");\n'
+    'request.post("/submit/order");\n'
+    'this.$http.get("user/profile");\n'
+    'axios.delete("goods/remove");\n'
+    'this.http.get<Resp>("/angular/typed");\n'
+    'axios.get("just plain text");\n'
 ))
 import collections                                                    # noqa: E402
 consts = ee.build_consts([js])
@@ -129,6 +135,12 @@ chk("C3 裸 fetch 字面量", ("/api/plain/literal", ee.base_of("/api/plain/lite
 chk("C4 SSE 通道", ("/api/stream/sse", "", "SSE", "sse") in idx)
 chk("C5 wss 字面量", ("wss://x.io/live", "", "WSS", "wss-url") in idx)
 chk("C6 graphql operationName", ("ListUsers", "", "?", "graphql-op") in idx)
+chk("C10 axios 调用点（api/ 前缀）", ("/api/orders/list", ee.base_of("/api/orders/list"), "GET", "call") in idx)
+chk("C11 request 调用点（/ 前缀）", ("/submit/order", ee.base_of("/submit/order"), "POST", "call") in idx)
+chk("C12 双漏场景：this.$http 无前缀相对路径", ("/user/profile", ee.base_of("/user/profile"), "GET", "call") in idx)
+chk("C13 双漏场景：axios.delete + 方法动词", ("/goods/remove", ee.base_of("/goods/remove"), "DELETE", "call") in idx)
+chk("C14 Angular 泛型调用点", ("/angular/typed", ee.base_of("/angular/typed"), "GET", "call") in idx)
+chk("C15 call 通道噪声过滤（无斜杠文案参数）", not any(r["形态"] == "call" and "plain" in r["接口路径"] for r in recs))
 jf = os.path.join(tmp, "zh-CN.json")
 w(jf, '{"menu":{"export":"api/i18n/export"}}')
 jrecs, _, _, _ = ee.extract_file(jf)
