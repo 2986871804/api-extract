@@ -44,7 +44,7 @@ Actuator 端点优先级（只读取证，不利用）：
 /actuator/gateway/routes   记录存在即可
 ```
 
-### §1.2 泄露路径清单（每项 1 发 GET；预算与节奏数值的唯一出处 = SKILL.md「速率与预算总表」）<!-- 最后核验 2026-09，核验源=同类探测路径清单仓库（probes-and-wordlists 等）与 HackTricks 的 diff；路径表只加不减，核验重点是"新框架要不要加"而非删旧。旧文中的 recon-skills 为前仓库布局名称残留。 -->
+### §1.2 泄露路径清单（每项 1 发 GET；预算与节奏数值见 SKILL.md「速率与预算总表」）<!-- 最后核验 2026-09，核验源=同类探测路径清单仓库（probes-and-wordlists 等）与 HackTricks 的 diff；路径表只加不减，核验重点是"新框架要不要加"而非删旧。旧文中的 recon-skills 为前仓库布局名称残留。 -->
 
 **探测顺序**（§1.1–§1.3 合计路径数超预算一倍，按此优先级花预算，超即停）：① catch-all 基线 1 发（§1.4）→ ② robots.txt / sitemap.xml → ③ §1.3 API 文档族（命中即高价值）→ ④ 按已命中指纹选 §1.1 矩阵对应行（Java 栈才探 Java 行，不盲扫全表）→ ⑤ §1.2 其余按余量。未探测路径记入未闭环清单（信息缺口），不算丢弃。
 
@@ -92,7 +92,7 @@ API 文档：     见 §1.3
 | `/server-status` | "Apache Server Status" |
 | phpinfo | "PHP Version" |
 
-### §1.5 指纹规则库（GitHub 现成资源，离线比对）
+### §1.6 指纹规则库（GitHub 现成资源，离线比对）
 
 指纹不自己维护矩阵——用社区维护的规则库对**已落盘的响应集**做离线匹配，零新增请求：
 
@@ -126,7 +126,7 @@ API 文档：     见 §1.3
 - **chunk 清单入口**（拿全量 JS 文件名）：`/asset-manifest.json`、`/webpack-manifest.json`、`runtime~main.*.js`（runtime chunk 含全部 chunk 映射）；抓不到清单时按常见名兜底猜路径：`/main.js /app.js /bundle.js /runtime.js /vendor.js /_next/static/_buildManifest.js`。
 - **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。**重跑幂等（阴性结论，干净环境三连跑验证）**：同 URL 重下原地覆盖；判定报告按 (file, url) 键 read-modify-write 合并，未动文件的历史判定保留；不同文件撞名自动加 `__父目录` 后缀并告警——追加 URL 重跑不会让报告行数/文件数翻倍。
 - **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
-- **下载判定联动（机械执行）**：提取器递归发现任意层级的 `_fetch_report.json`（safe_fetch 的报告常在 `./dl/` 子目录）——非 OK 且非 CHUNKED 的文件（TRUNCATED / CL_MISSING / FAILED / HTTP_3xx / HTTP_4xx / HTTP_5xx）**不进入提取**（与 SKILL.md 规则 4 的一揽子口径及 delivery §0 词表一致），排除计数入汇总；4xx 错误页里的 href 是支持链接/跳转目标，只记"存在被拦"信号，不进接口清单。判定文件自身同样不进提取。**报告损坏的降级三件套**：① 显式告警（含路径与异常原因，不静默停摆）；② `.hdr` 侧车重建判定——safe_fetch 给每个下载写自包含侧车（首行 `Status: <code>` + 响应头），报告损坏时按 Status+Content-Length 完整重建 verdict（覆盖 TRUNCATED 与 4xx；旧版无 Status 行的侧车退化为仅截断校验）；③ **退出码 1 = 判定报告损坏（结果未经过滤）**，链式调用可机械检测降级。注意与 safe_fetch 的退出码语义**不同**：safe_fetch 的 1 = 存在非 OK 判定或需重抓项——预期内的纯 404（确定性结果）也返回 1，不是下载器故障，别当降级处理。剩余边界如实声明：**无 .hdr 的文件无法复核**（外部来源文件），已进入提取。报告与侧车读取均容 BOM（utf-8-sig，同一宽容度）。"**无报告且无侧车**"才是正常态：报告缺失（手动拷贝目录、误删 json）但同目录存在 .hdr 时**侧车即权威、照常拦截**——否则 Spring Boot 错误体、Tomcat 堆栈这类高信息量 404 页会带着里面的路径混进提取产物（实测缝隙，侧车判定已不依赖报告存在）。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。
+- **下载判定联动（机械执行，四个要点）**：① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（口径同 SKILL.md 规则 4 与 delivery §0）；② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进接口清单；③ 判定文件自身不进提取；④ **「无报告且无侧车」才是正常态**——报告缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截；无侧车的外部来源文件如实声明无法复核、已进入提取。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。脚本侧机制（侧车重建、报告合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring；改动任一脚本后跑 evals 回归。<!-- 历史：报告损坏曾需「三件套」降级（告警/侧车重建/退出码 1）；侧车拦截曾依赖报告存在，「无报告+侧车在场」缝隙为实测发现后修复；safe_fetch 与提取脚本退出码语义不同（前者 4xx 也返回 1）。详见 git log 与脚本注释 -->
 - **内容嗅探兜底**：无判定文件时，.js 路径存成 HTML 错误页按 HTML 形态处理——扩展名与内容形态脱钩不再整页静默漏。
 - **sourcemap**：JS 尾部 `sourceMappingURL=`；**内联形态**（`sourceMappingURL=data:application/json;base64,...` 打进 JS 本身）base64 解码即得完整 map——比外链 .map 更隐蔽且常被忽略；历史 map 用 Wayback CDX `filter=original:.*\.js\.map$` 挖。三种来源的 `sourcesContent[]` 都是前端完整源码（含后来删除的硬编码密钥、内部接口、注释）+ 源码文件清单，**完全离线零新增请求**。仅取有明确引用或已存在的 map，不盲猜路径。
 
@@ -164,7 +164,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <存活子域>
 4. **不以 `/` 开头的接口路径是真实存在的**（`url:"face/batchImport"`），归一化补 `/`，不过滤。
 5. **隐藏接口第二遍**（`--hidden`）：上传组件的 `action:`、`uploadUrl = "..."` 等 **`:` 键与 `=` 赋值两种形态都收**（赋值取值带语句边界与 ASI 续行启发）的变量承载地址不经过 axios 封装，只扫 `url:` 必漏；变量声明与调用点分处两地，要配对反查。
 6. **交叉验证防噪声**：隐藏形态的命中若与已知接口零重合，先怀疑规则误抓（图表库/播放器内部字段），不急着入清单。
-7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中），通道直方图与粗筛/精提对账对其生效。曾长期"只是规则承诺"（双漏实测：`this.$http.get("user/profile")` 无 `/` 无 api 前缀，粗筛宽松串正则与精提均不可见；模板串 backtick 一度全通道双漏——粗筛 STR/REL 与精提 call/fetch 的引号类都已扩为 `` ["'`] ``）。
+7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中），通道直方图与粗筛/精提对账对其生效。<!-- 历史：本规则曾长期只是承诺未实现，call 通道与模板串引号类扩展均为实测双漏后补齐，用例见 evals C10-C19 -->
 8. **WebSocket / SSE / GraphQL 通道**：`new WebSocket(...)`、`new EventSource(...)` 的值表达式按占位符规则重建（方法列记 WSS / SSE）；`wss?://` 字面量记形态 wss-url；`operationName:` 记形态 graphql-op（配合 /graphql 端点用）。均有提取产出，不再只是规则承诺。
 9. **前缀常量回填**：`{API_HOST}` 类前缀占位符对照全文件常量表（`NAME = "https://..."` / `wss://`）自动回填基址并剥占位符；表里没有才标"需人工解析"。占位符在路径中段的不剥（防破坏路径）。
 
