@@ -192,7 +192,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
    document.querySelector('#app').__vue_app__._context                // Vue3
    __BUILD_MANIFEST.sortedPages                                        // Next.js（控制台）：含动态路由 /[slug]
    ```
-   路由表与可见菜单做 diff，发现隐藏功能页（提交页/管理页类）。`/#/` 片段路由普通 HTTP 重取只能拿到根文档，需无头浏览器物化。
+   路由表与可见菜单做 diff，发现隐藏功能页（提交页/管理页类）。`/#/` 片段路由普通 HTTP 重取只能拿到根文档，需无头浏览器渲染。
 4. **覆盖范围**：钩子只捕获客户端发起的请求；服务端渲染页面的数据在 HTML 里（`__NUXT__` / `__NEXT_DATA__` / `window.__CONFIG__` / `window.__INITIAL_STATE__`），零客户端请求是正常现象，读注水数据。跨域整页跳转会杀掉钩子，需重注入。
 5. CSS 也过一遍：`url()` 引用、`@import`、CSS 内 sourcemap 引用（常漏的资产与域名来源）。
 
