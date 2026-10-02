@@ -76,8 +76,8 @@ API_PREFIX = r"(?:api|web|gateway|gw|cf|srv|service|rest|v[12])"
 HTML_ASSET_EXTS = {"css", "js", "mjs", "map", "png", "jpg", "jpeg", "gif", "webp", "svg",
                    "ico", "woff", "woff2", "ttf", "eot", "mp4", "webm", "mp3", "json", "xml", "pdf"}
 
-# safe_fetch 判定文件（与其 --out 目录同处）：非 OK 的文件不得用于提取——
-# 机械执行 delivery §0 的「TRUNCATED/CL_MISSING/FAILED 不提取；HTTP_4xx 只记存在被拦信号」。
+# safe_fetch 判定文件（与其 --out 目录同处）：非 OK 且非 CHUNKED 的文件不得用于提取——
+# 机械执行 delivery §0 的准入口径（CHUNKED 可提取；HTTP_4xx 只记存在被拦信号，错误页不进清单）。
 # 否则 4xx 错误页里的 <a href>（支持链接/跳转目标）会以假阳性接口进清单。
 FETCH_REPORT = "_fetch_report.json"
 
