@@ -636,27 +636,35 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                          "来源文件": os.path.basename(path),
                          "值表达式": raw[:160]})
 
-    # 裸 fetch("/api/...") 首参字面量——axios/this.http 之外最常见的调用形态（.vue 高发），
-    # eval 实测精提 0 命中、仅靠粗筛+人工补录兜底；只收字面量首参，动态首参不猜
-    for m in re.finditer(r'\bfetch\s*\(\s*(["\'])(/[^"\']{2,200})\1', text):
-        p, q, _ = normalize(m.group(2))
-        if p and p != "/":
-            stats["fetch形态"] += 1
-            recs.append({"接口路径": p, "基路径": base_of(p),
-                         "请求方式": "?", "形态": "fetch",
-                         "含占位符": "否",
-                         "query": ("?" + q) if q else "", "参数名": "",
-                         "可疑": "裸 fetch 首参字面量", "来源文件": os.path.basename(path),
-                         "值表达式": m.group(2)[:160]})
+    # 裸 fetch 首参字面量（.vue 高发）：单/双引号与模板串都收，${} 插值按占位符语义还原，
+    # 纯字面量 backtick 当普通串——粗筛的 STR/REL 正则长期只见 ["']，模板串全通道双漏（实测）。
+    # 只收字面量首参，动态首参不猜。
+    for m in re.finditer(r'\bfetch\s*\(\s*((["\'`])(?:(?!\2)[^\\]|\\.){2,200}\2)', text):
+        toks = _tokenize_value(m.group(1))
+        raw, has_ph = rebuild_path(toks)
+        p, q, _ = normalize(raw)
+        if not p or p == "/" or "/" not in p \
+                or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
+            continue
+        stats["fetch形态"] += 1
+        recs.append({"接口路径": p, "基路径": base_of(p),
+                     "请求方式": "?", "形态": "fetch",
+                     "含占位符": "是" if has_ph else "否",
+                     "query": ("?" + q) if q else "", "参数名": "",
+                     "可疑": "裸 fetch 首参字面量", "来源文件": os.path.basename(path),
+                     "值表达式": m.group(1)[:160]})
 
     # 框架调用点首参字面量（phase2 §3 规则 7）：axios.get / this.$http.get / this.http.get<T> /
     # request.post——粗筛的宽松串正则只兜得住带 / 或 api 前缀的写法，this.$http.get("user/profile")
     # 这类无前缀相对路径两边都看不见（实测双漏，对账只 diff 粗筛∩精提兜不住双漏），必须成本通道。
-    # 只收字面量首参（含可选泛型参数 this.http.get<T>），动态首参不猜。
+    # 只收字面量首参（含可选泛型参数 this.http.get<T>），动态首参不猜；模板串与 ${} 插值
+    # 走 tokenizer（插值→占位符）；\b 词边界拦 myrequest.get 这类前缀误命中。
     for m in re.finditer(
-            r'(?:axios|\$?http|request)\s*\.\s*([a-z]+)(?:<[^>(]{0,40}>)?\s*\(\s*(["\'])'
-            r'([^"\']{2,200})\2', text):
-        p, q, _ = normalize(m.group(3))
+            r'\b(?:axios|\$?http|request)\s*\.\s*([a-z]+)(?:<[^>(]{0,40}>)?\s*\(\s*'
+            r'((["\'`])(?:(?!\3)[^\\]|\\.){2,200}\3)', text):
+        toks = _tokenize_value(m.group(2))
+        raw, has_ph = rebuild_path(toks)
+        p, q, _ = normalize(raw)
         # 结果过滤同 hidden 通道：要像接口（有斜杠、无空格/CJK），挡掉 send("message") 类纯文案参数
         if not p or len(p) < 4 or "/" not in p \
                 or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
@@ -665,10 +673,10 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         stats["call形态"] += 1
         recs.append({"接口路径": p, "基路径": base_of(p),
                      "请求方式": (m.group(1) or "?").upper(), "形态": "call",
-                     "含占位符": "否",
+                     "含占位符": "是" if has_ph else "否",
                      "query": ("?" + q) if q else "", "参数名": "",
                      "可疑": "框架调用点（axios/$http/http/request）", "来源文件": os.path.basename(path),
-                     "值表达式": m.group(3)[:160]})
+                     "值表达式": m.group(2)[:160]})
 
     # WebSocket / SSE / GraphQL 操作名（产出承诺必须有提取通道）
     for m in re.finditer(r'new\s+WebSocket\s*\(([^)]{2,200})\)', text):

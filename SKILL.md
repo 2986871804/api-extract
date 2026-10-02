@@ -1,7 +1,7 @@
 ---
 name: api-extract
 description: 授权范围内 Web API 接口提取、敏感信息挖掘与只读接口验证。用户给出 JS 目录/URL/域名/apk 要求提取接口、挖密钥、分析前端时使用；用户要求验证接口、测哪些不要 token、批量确认接口存在性与鉴权时使用。输入支持站点清单 CSV（任意来源）、单域名、URL、本地目录、apk/ipa。不做越权/写入/注入测试，验证只发 GET/HEAD/OPTIONS。
-version: "2.0"
+version: "2.1"
 ---
 
 # API 提取与接口验证

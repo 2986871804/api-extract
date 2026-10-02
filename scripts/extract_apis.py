@@ -26,8 +26,8 @@ from extract_endpoints import (TEXT_EXTS, API_PREFIX, load_fetch_exclusions,
                                FETCH_REPORT, find_fetch_reports, hdr_bad)  # 扫描面/前缀/判定联动同源
 
 ASSET_RE = re.compile(r'\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|mp4|json|html?|map|vue)(\?|$)', re.I)
-STR_RE = re.compile(r'(["\'])(/[^"\']{2,200})\1')
-REL_RE = re.compile(r'(["\'])((?:' + API_PREFIX + r')/[a-zA-Z0-9_\-/]{3,150})\1')
+STR_RE = re.compile(r'(["\'`])(/[^"\'`]{2,200})\1')
+REL_RE = re.compile(r'(["\'`])((?:' + API_PREFIX + r')/[a-zA-Z0-9_\-/]{3,150})\1')
 PROT_REL_RE = re.compile(r'(["\'])(//[a-z0-9.\-]+\.[a-z]{2,}(/[^\s"\']*)?)\1', re.I)
 URL_RE = re.compile(r'(["\'])(https?://[a-zA-Z0-9\-.]+(?:/[^\s"\']{0,150})?)\1')
 

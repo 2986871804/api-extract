@@ -107,6 +107,9 @@ w(js, (
     'axios.delete("goods/remove");\n'
     'this.http.get<Resp>("/angular/typed");\n'
     'axios.get("just plain text");\n'
+    'fetch(`/api/tpl1`);\n'
+    'axios.get(`/api/items/${id}`);\n'
+    'myrequest.get("/api/wp");\n'
 ))
 import collections                                                    # noqa: E402
 consts = ee.build_consts([js])
@@ -141,6 +144,11 @@ chk("C12 双漏场景：this.$http 无前缀相对路径", ("/user/profile", ee.
 chk("C13 双漏场景：axios.delete + 方法动词", ("/goods/remove", ee.base_of("/goods/remove"), "DELETE", "call") in idx)
 chk("C14 Angular 泛型调用点", ("/angular/typed", ee.base_of("/angular/typed"), "GET", "call") in idx)
 chk("C15 call 通道噪声过滤（无斜杠文案参数）", not any(r["形态"] == "call" and "plain" in r["接口路径"] for r in recs))
+chk("C16 fetch 模板串字面量", ("/api/tpl1", ee.base_of("/api/tpl1"), "?", "fetch") in idx)
+_tpl = idx.get(("/api/items/{id}", ee.base_of("/api/items/{id}"), "GET", "call"))
+chk("C17 call 模板串插值 → 占位符", _tpl is not None and _tpl["含占位符"] == "是")
+chk("C18 call 词边界（myrequest 不命中）", not any(r["形态"] == "call" and r["接口路径"] == "/api/wp" for r in recs))
+chk("C19 粗筛正则吃模板串", bool(ea.STR_RE.search("`/api/tpl2`")) and bool(ea.REL_RE.search("`api/coarse/tpl`")))
 jf = os.path.join(tmp, "zh-CN.json")
 w(jf, '{"menu":{"export":"api/i18n/export"}}')
 jrecs, _, _, _ = ee.extract_file(jf)
