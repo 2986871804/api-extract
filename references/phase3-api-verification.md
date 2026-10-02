@@ -8,7 +8,7 @@
 
 ## 选候选
 
-优先验证最可能免鉴权的 5-10 个：
+优先验证最可能免鉴权的候选（每批上限唯一出处 = SKILL.md 阶段 3）：
 
 - 路径含 `public / anonymous / noLogin / open / guest / free`（作者命名即线索）
 - 语言包产出的词（passwordlessLogin / export / permission 这类 i18n 高频接口名——见 phase2 §2 二跳补抓）

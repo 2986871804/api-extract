@@ -44,7 +44,7 @@ Actuator 端点优先级（只读取证，不利用）：
 /actuator/gateway/routes   记录存在即可
 ```
 
-### §1.2 泄露路径清单（每项 1 发 GET；预算数值的唯一出处 = SKILL.md 阶段 2「探测预算」（此处不复制，防漂移）；最后核验 2026-09，核验源=recon-skills `probes-and-wordlists` / HackTricks 同类仓库 diff——路径表只加不减，核验重点是"新框架要不要加"而非删旧）
+### §1.2 泄露路径清单（每项 1 发 GET；预算与节奏数值的唯一出处 = SKILL.md「速率与预算总表」）<!-- 最后核验 2026-09，核验源=同类探测路径清单仓库（probes-and-wordlists 等）与 HackTricks 的 diff；路径表只加不减，核验重点是"新框架要不要加"而非删旧。旧文中的 recon-skills 为前仓库布局名称残留。 -->
 
 **探测顺序**（§1.1–§1.3 合计路径数超预算一倍，按此优先级花预算，超即停）：① catch-all 基线 1 发（§1.4）→ ② robots.txt / sitemap.xml → ③ §1.3 API 文档族（命中即高价值）→ ④ 按已命中指纹选 §1.1 矩阵对应行（Java 栈才探 Java 行，不盲扫全表）→ ⑤ §1.2 其余按余量。未探测路径记入未闭环清单（信息缺口），不算丢弃。
 
@@ -118,7 +118,7 @@ API 文档：     见 §1.3
 
 大 JS 文件可能只下载一部分：HTTP 200、退出码 0，工具不报错。基于残缺文件的提取会漏接口。
 
-- 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（间隔 ≥2 秒是 SKILL.md 硬性规则 5 的要求，脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
+- 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（`--gap` 数值以 SKILL.md「速率与预算总表」为准，脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
 - 判定标准一条：**实收字节数 == 响应头 Content-Length**。不符重下。chunked 传输（无 CL）→ 判定 CHUNKED：**可用于提取**、产物标注"不可校验"，不进重试（重试也长不出 CL）。
 - 经验阈值：>700KB 的文件重点盯。
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
