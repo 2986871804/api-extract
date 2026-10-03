@@ -455,6 +455,15 @@ def normalize(path):
     return path.rstrip("/"), query, suspect
 
 
+def _absolute_split(raw):
+    """绝对 URL → (基址, 路径)；裸域/无路径返回 None（走剔除计数）。
+    必须在 normalize 之前用 raw 判断——normalize 会把 // 折叠成 /，https:// 变 /https:/…（垃圾路径）。"""
+    mo = re.match(r"(https?://[^/\"']+)(/[^\"'?]*)", raw.split("?")[0])
+    if mo and mo.group(2) and mo.group(2) != "/":
+        return mo.group(1), mo.group(2)
+    return None
+
+
 # ---------------------------------------------------------------- 主提取
 
 def extract_file(path, hidden=False, stats=None, consts=None):
@@ -505,10 +514,10 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         # 无路径的裸域（https://x.com/）仍走剔除计数。http 形态在此全权处理，
         # 故下方非接口过滤不再含 http 分支
         if raw.startswith(("http://", "https://")):
-            mo = re.match(r"(https?://[^/\"']+)(/[^\"'?]*)", raw.split("?")[0])
-            if mo and mo.group(2) and mo.group(2) != "/":   # 尾斜杠裸域：group(2)="/" 是真值，曾产出 接口路径='/' 的垃圾行
+            absr = _absolute_split(raw)   # 尾斜杠裸域在助手内挡（group(2)="/" 是真值，曾产出 接口路径='/' 的垃圾行）
+            if absr:
                 stats["绝对URL"] += 1
-                recs.append({"接口路径": mo.group(2), "基路径": mo.group(1),
+                recs.append({"接口路径": absr[1], "基路径": absr[0],
                              "请求方式": method, "形态": "absolute",
                              "含占位符": "是" if has_ph else "否",
                              "query": ("?" + q) if q else "", "参数名": param_keys(obj),
@@ -544,14 +553,29 @@ def extract_file(path, hidden=False, stats=None, consts=None):
             # 这类「常量 + 字面量」表达式同样要收；能不能当接口交给后面的结果过滤器判断
             toks = _tokenize_value(expr)
             raw, has_ph = rebuild_path(toks)
+            # 绝对/协议 URL 必须在 normalize 之前用 raw 判——折叠后 startswith("https://") 恒假（旧版死代码）
+            if raw.startswith(("http://", "https://")):
+                absr = _absolute_split(raw)
+                if absr:
+                    stats["hidden形态"] += 1
+                    recs.append({"接口路径": absr[1], "基路径": absr[0],
+                                 "请求方式": "?", "形态": "hidden:%s" % name,
+                                 "含占位符": "是" if has_ph else "否",
+                                 "query": "",
+                                 "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
+                                 "来源文件": os.path.basename(path), "值表达式": expr[:160]})
+                else:
+                    stats["hidden噪声"] += 1
+                continue
+            if raw.startswith(("ws://", "wss://")):
+                stats["hidden去重"] += 1   # wss-url 通道已收同一字面量——跳过防同地址两行（旧版曾产 /wss:/… 折叠垃圾行）
+                continue
             p, q, sus = normalize(raw)
             # 噪声过滤：无斜杠 / 含空格 / 含 CJK 或全角符号 / 太短 —— i18n 文案与告警文案都在这里挡掉
             if not p or len(p) < 4 or "/" not in p \
                     or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
                 stats["hidden噪声"] += 1
                 continue
-            if p.startswith(("http://", "https://")):
-                sus = (sus + "; " if sus else "") + "绝对外链"
             p, bres, sus = resolve_prefix(p, sus, consts)
             stats["hidden形态"] += 1
             recs.append({"接口路径": p, "基路径": bres or base_of(p),
@@ -663,6 +687,21 @@ def extract_file(path, hidden=False, stats=None, consts=None):
     for m in re.finditer(r'\bfetch\s*\(\s*((["\'`])(?:(?!\2)[^\\]|\\.){2,200}\2)', text):
         toks = _tokenize_value(m.group(1))
         raw, has_ph = rebuild_path(toks)
+        if raw.startswith(("http://", "https://")):
+            # 绝对 URL 拆基址+路径（同 url 通道）——旧版直接 normalize 产出 /https:/… 垃圾路径且丢失域外标注
+            absr = _absolute_split(raw)
+            if absr:
+                stats["绝对URL"] += 1
+                recs.append({"接口路径": absr[1], "基路径": absr[0],
+                             "请求方式": "?", "形态": "absolute",
+                             "含占位符": "是" if has_ph else "否",
+                             "query": "", "参数名": "",
+                             "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
+                             "来源文件": os.path.basename(path),
+                             "值表达式": m.group(1)[:160]})
+            else:
+                stats["非接口剔除"] += 1
+            continue
         p, q, _ = normalize(raw)
         if not p or p == "/" or "/" not in p \
                 or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
@@ -685,6 +724,20 @@ def extract_file(path, hidden=False, stats=None, consts=None):
             r'((["\'`])(?:(?!\3)[^\\]|\\.){2,200}\3)', text):
         toks = _tokenize_value(m.group(2))
         raw, has_ph = rebuild_path(toks)
+        if raw.startswith(("http://", "https://")):
+            absr = _absolute_split(raw)   # 同 url/fetch 通道：绝对 URL 拆基址+路径，不产 /https:/ 垃圾
+            if absr:
+                stats["绝对URL"] += 1
+                recs.append({"接口路径": absr[1], "基路径": absr[0],
+                             "请求方式": (m.group(1) or "?").upper(), "形态": "absolute",
+                             "含占位符": "是" if has_ph else "否",
+                             "query": "", "参数名": "",
+                             "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
+                             "来源文件": os.path.basename(path),
+                             "值表达式": m.group(2)[:160]})
+            else:
+                stats["非接口剔除"] += 1
+            continue
         p, q, _ = normalize(raw)
         # 结果过滤同 hidden 通道：要像接口（有斜杠、无空格/CJK），挡掉 send("message") 类纯文案参数
         if not p or len(p) < 4 or "/" not in p \

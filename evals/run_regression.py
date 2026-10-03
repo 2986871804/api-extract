@@ -120,6 +120,10 @@ w(js, (
     'fetch(`/api/tpl1`);\n'
     'axios.get(`/api/items/${id}`);\n'
     'myrequest.get("/api/wp");\n'
+    'fetch("https://api.demo.local/api/v2/stats/overview");\n'
+    'axios.get("https://cdn.other.net/v9/abs/call");\n'
+    'var statUrl = "https://api.demo.local/api/v2/stats/hidden";\n'
+    'var dupWsUrl = "wss://dup.io/ws";\n'
 ))
 import collections                                                    # noqa: E402
 consts = ee.build_consts([js])
@@ -159,6 +163,14 @@ _tpl = idx.get(("/api/items/{id}", ee.base_of("/api/items/{id}"), "GET", "call")
 chk("C17 call 模板串插值 → 占位符", _tpl is not None and _tpl["含占位符"] == "是")
 chk("C18 call 词边界（myrequest 不命中）", not any(r["形态"] == "call" and r["接口路径"] == "/api/wp" for r in recs))
 chk("C19 粗筛正则吃模板串", bool(ea.STR_RE.search("`/api/tpl2`")) and bool(ea.REL_RE.search("`api/coarse/tpl`")))
+chk("C20 fetch 绝对 URL 拆基址（旧版产 /https:/ 垃圾路径）",
+    ("/api/v2/stats/overview", "https://api.demo.local", "?", "absolute") in idx)
+chk("C21 call 绝对 URL 拆基址", ("/v9/abs/call", "https://cdn.other.net", "GET", "absolute") in idx)
+_hs = idx.get(("/api/v2/stats/hidden", "https://api.demo.local", "?", "hidden:statUrl"))
+chk("C22 hidden 绝对 URL 拆基址+域外标注", _hs is not None and "另行授权" in _hs["可疑"])
+chk("C23 协议 URL 不再产折叠垃圾行（hidden 的 wss 值去重给 wss-url 通道）",
+    not any(r["接口路径"].startswith(("/wss:/", "/https:/", "/http:/")) for r in recs)
+    and ("wss://dup.io/ws", "", "WSS", "wss-url") in idx)
 jf = os.path.join(tmp, "zh-CN.json")
 w(jf, '{"menu":{"export":"api/i18n/export"}}')
 jrecs, _, _, _ = ee.extract_file(jf)
@@ -198,7 +210,7 @@ chk("D5 license 横幅整块滤除", stats2["license块滤除"] == 1 and hits2 =
 # ---------------------------------------------------------------- E 响应体挖掘
 print("== E 响应体挖掘 ==")
 body = os.path.join(tmp, "001.body")
-w(body, ('{"path": "/api/v2/echo", "links": {"next": "/api/page/list"},'
+w(body, ('{"path": "/api/v2/echo", "links": {"next": "/api/page/list?page=2&size=50"},'
          '"upload_url": "/api/up/file", "nested": "/users/123/orders",'
          '"d": "/api/export/all"}\n'))
 found = mr.mine_file(body)
@@ -206,10 +218,12 @@ paths = {}
 for norm, raw, pat, _ in found:
     paths.setdefault(norm, (raw, pat))       # 同路径多模式命中取首个（特异性序）
 chk("E1 error_echo", paths.get("/api/v2/echo", ("", ""))[1] == "error_echo")
-chk("E2 hateoas", "/api/page/list" in paths)
+chk("E2 hateoas（带 query 的分页链接不再被静默过滤）", "/api/page/list" in paths)
 chk("E3 url_field", "/api/up/file" in paths)
 chk("E4 嵌套资源数字段归一化", "/users/{id}/orders" in paths)
-chk("E5 危险词标记", bool(mr.DANGER_WORDS.search("/api/export/all")))
+chk("E5 危险词标记（路径段精确）", mr.danger_hit("/api/export/all"))
+chk("E6 危险词段边界：/orders 不误中 /order", not mr.danger_hit("/api/v1/orders/history"))
+chk("E7 危险词 camel 组合段仍命中", mr.danger_hit("/api/resetPassword"))
 
 # ---------------------------------------------------------------- F 粗筛分级
 print("== F 粗筛分级 ==")

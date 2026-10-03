@@ -54,10 +54,22 @@ PATTERNS = [
 # 这些词出现在路径中时标记「⚠高危」——不是因为脚本会触发它们（脚本零请求），
 # 而是因为后续如果有人/agent 对它们发 GET，可能触发服务端副作用（如 export 生成大文件、
 # logout 使会话失效、callback 触发下游动作）。只标记不丢弃（只加不减）。
-DANGER_WORDS = re.compile(
-    r'/logout|/signout|/export|/download|/delete|/remove|/destroy|/reset|/flush|/clear'
-    r'|/callback|/webhook|/notify|/admin|/upload|/import|/create|/update|/edit|/modify'
-    r'|/write|/send|/pay|/order|/submit|/password|/token|/secret|/key|/credential', re.I)
+# 按路径段精确匹配：/orders 不再误中 /order（旧版整串子串匹配，全部 /orders/* 都在稀释信号）；
+# camel 组合段（exportFile / resetPassword）仍命中。
+DANGER_SEGMENTS = frozenset(
+    "logout signout export download delete remove destroy reset flush clear "
+    "callback webhook notify admin upload import create update edit modify "
+    "write send pay order submit password token secret key credential".split())
+
+
+def danger_hit(norm):
+    """危险词按路径段判定：整段命中，或小写前缀命中且原段续大写（camel 组合）。"""
+    for seg in norm.strip("/").split("/"):
+        s = seg.lower()
+        for w in DANGER_SEGMENTS:
+            if s == w or (s.startswith(w) and seg[len(w):len(w) + 1].isupper()):
+                return True
+    return False
 
 ASSET_RE = re.compile(
     r'\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|mp4|json|xml|pdf)(\?|$)', re.I)
@@ -104,9 +116,9 @@ def mine_file(path):
     for pat_name, pat in PATTERNS:
         for m in pat.finditer(text):
             raw = m.group(1)
-            if not is_valid_path(raw):
+            norm = normalize_path(raw)   # 先归一（去 query/数字段）再校验——旧序先校验，带 query 的 HATEOAS 分页链接被静默过滤
+            if not is_valid_path(norm):
                 continue
-            norm = normalize_path(raw)
             line = text.count("\n", 0, m.start()) + 1
             out.append((norm, raw, pat_name, line))
     return out
@@ -147,7 +159,7 @@ def main():
                 if norm not in all_finds:
                     all_finds[norm] = {
                         "raw": raw, "pattern": pat, "files": set(),
-                        "danger": bool(DANGER_WORDS.search(norm))
+                        "danger": danger_hit(norm)
                     }
                 all_finds[norm]["files"].add(f)
 
