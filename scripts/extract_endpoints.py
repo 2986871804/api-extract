@@ -17,11 +17,11 @@ extract_endpoints.py —— SPA 前端接口提取器的【参考实现】（技
      字面量原样保留，动态表达式一律变成 {占位符}，**绝不丢弃中间段**。
   3. 🔴 无前导斜杠的值（url:"face/batchImport"）→ 归一化补 "/"，**不许 startswith("/") 过滤掉**。
   4. --hidden：隐藏形态扫描（el-upload 的 action:、componentsUrl/uploadUrl/downUrl 等
-     data 变量承载的地址），结果单独标 形态=hidden，供人工确认。
+     data 变量承载的地址），结果单独标 形态=hidden:<变量名>，供人工确认。
 
 用法：
   python extract_endpoints.py --dir <文本目录> --out report.txt --csv out.csv
-  # 目录递归扫 js/mjs/ts/jsx/vue/json/html/css/map（语言包里的接口不再被无声跳过）
+  # 目录递归扫 js/mjs/cjs/ts/tsx/jsx/vue/json/html/htm/css/map（语言包里的接口不再被无声跳过）
   python extract_endpoints.py --files a.js b.js --csv out.csv
   python extract_endpoints.py --dir <js目录> --hidden --csv out.csv
 
@@ -501,7 +501,7 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         mm = METHOD_RE.search(obj)
         method = mm.group(1).strip().upper() if mm and mm.group(1).strip() else "?"
         rel = os.path.basename(path)
-        # 绝对 URL 不是噪声：拆 基址+路径 落清单（phase2 §5 承诺"域外接口只记录，需另行授权"）；
+        # 绝对 URL 不是噪声：拆 基址+路径 落清单（phase2 §5 承诺"第三方域/兄弟域接口只记录，需另行授权"）；
         # 无路径的裸域（https://x.com/）仍走剔除计数。http 形态在此全权处理，
         # 故下方非接口过滤不再含 http 分支
         if raw.startswith(("http://", "https://")):
@@ -742,7 +742,7 @@ def extract_file(path, hidden=False, stats=None, consts=None):
 
 def main():
     ap = argparse.ArgumentParser(description="SPA 前端接口提取（参考实现，离线）")
-    ap.add_argument("--dir", help="文本目录（递归扫 js/json/html/css/ts/vue/map）")
+    ap.add_argument("--dir", help="文本目录（递归扫 js/mjs/cjs/ts/tsx/jsx/vue/json/html/htm/css/map）")
     ap.add_argument("--files", nargs="*", help="显式指定 JS 文件")
     ap.add_argument("--hidden", action="store_true", help="同时扫隐藏形态（action:/componentsUrl/...）")
     ap.add_argument("--csv", help="输出 CSV（UTF-8 BOM，Excel 可直接开）")
@@ -839,13 +839,13 @@ def main():
     L.append("🔎 解析覆盖基线自查：`url:` 总数 %d vs 入对象 %d —— 两者差额 = %d"
              "（差额大说明有 `url:` 没能配到所属对象，需人工看）" % (tot_url, tot_hit, tot_url - tot_hit))
     L.append("")
-    # 通道健康直方图（零也在场）：某通道整库为 0 本身是信号——前端形态变迁时最先在这里显形
+    # 通道直方图（零也在场）：某通道整库为 0 本身是信号——前端形态变迁时最先在这里显形
     # （裸 fetch 盲区就是 eval 抓出来的：修复前该直方图里 fetch 恒 0 而无人看见）
     chans = [("url", "url形态"), ("hidden", "hidden形态"), ("concat", "concat形态"),
              ("json", "json形态"), ("css", "css形态"), ("html", "html形态"),
              ("fetch", "fetch形态"), ("call", "call形态"), ("ws/wss", "ws形态"),
              ("sse", "sse形态"), ("graphql", "graphql形态"), ("absolute", "绝对URL")]
-    L.append("通道命中直方图（零也是信号，勿略过）：" +
+    L.append("通道直方图（零也是信号，勿略过）：" +
              " · ".join("%s %d" % (n, stats.get(k, 0)) for n, k in chans))
     L.append("")
     L.append("🧹 剔除统计：非接口 %d 条（告警文案/正则片段/绝对外链/打包器路径）、"

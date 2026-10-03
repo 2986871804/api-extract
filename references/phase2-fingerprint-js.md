@@ -1,4 +1,4 @@
-<!-- 阶段 2 实现细节：指纹、JS 下载、接口提取、敏感信息。产出对接见 SKILL.md 数据流；状态词以 delivery.md §0 为准。 -->
+<!-- 阶段 2 实现细节：指纹、JS 下载、接口提取、敏感信息。产出对接见 SKILL.md「工作区约定」与两阶段的「产出」行；词表以 delivery.md §0 为准。 -->
 
 # 阶段 2：提取（内容测绘）
 
@@ -40,7 +40,7 @@ Actuator 端点优先级（只读取证，不利用）：
 ```
 /actuator/env           环境变量（DB 凭据、key）
 /actuator/heapdump      JVM 堆（内存中的口令；下载取证，不利用）
-/actuator/mappings      全部 URL 映射——直接并入口清单
+/actuator/mappings      全部 URL 映射——直接并入入口清单
 /actuator/configprops   配置属性
 /actuator/beans /actuator/threaddump
 /actuator/gateway/routes   记录存在即可
@@ -48,7 +48,9 @@ Actuator 端点优先级（只读取证，不利用）：
 
 ### §1.2 敏感路径探测表（每项 1 发 GET；预算与节奏数值见 SKILL.md「速率与预算总表」）<!-- 最后核验 2026-09，核验源=同类探测路径清单仓库（probes-and-wordlists 等）与 HackTricks 的 diff；路径表只加不减，核验重点是"新框架要不要加"而非删旧。 -->
 
-**探测顺序**（§1.1–§1.3 合计路径数超预算一倍，按此优先级花预算，超即停）：① catch-all 基线 1 发（§1.4）→ ② robots.txt / sitemap.xml → ③ §1.3 API 文档族（命中即高价值）→ ④ 按已命中指纹选 §1.1 矩阵对应行（Java 栈才探 Java 行，不盲扫全表）→ ⑤ §1.2 其余按余量。未探测路径记入未闭环清单（信息缺口），不算丢弃。
+**探测顺序**（§1.1–§1.4 即 SKILL.md 所称「白名单探测」的路径清单；§1.1–§1.3 合计路径数超预算一倍，按此优先级花预算，超即停）：① catch-all 基线 1 发（§1.4）→ ② robots.txt / sitemap.xml → ③ §1.3 API 文档族（命中即高价值）→ ④ 按已命中指纹选 §1.1 矩阵对应行（Java 栈才探 Java 行，不盲扫全表）→ ⑤ §1.2 其余按余量。未探测路径记入未闭环清单（信息缺口）。
+
+**探测响应处置**：白名单探测每发响应头+正文落盘（阶段 3「探测响应复用」的证据前提），文件名 = 探测路径去前导斜杠、`/` 转 `_`（同站撞名加序号后缀）；探测得响应的路径**当场写入**入口清单（来源=PROBE，不留到收尾），已得响应的条目按「复用响应、不重发」处理（规则见 phase3「选候选」的探测响应复用）。
 
 ```
 版本控制/备份： /.git/HEAD  /.git/config  /.svn/entries  /.DS_Store
@@ -59,8 +61,8 @@ Actuator 端点优先级（只读取证，不利用）：
 CMS 专项：     /wp-config.php.bak  /wp-content/debug.log  /wp-json/wp/v2/users（用户枚举）
               /CHANGELOG.txt（Drupal 版本）  /readme.html
 管理/调试：    /pma  /_phpmyadmin  /server-status  /server-info  /phpinfo.php  /debug/
-策略/元信息：  /robots.txt（Disallow 值=专属路径清单）  /sitemap.xml（全 URL 列表）  /crossdomain.xml
-              /.well-known/security.txt（组织信息/邮箱）
+策略/元信息：  /crossdomain.xml  /.well-known/security.txt（组织信息/邮箱）
+              （robots.txt / sitemap.xml 已列探测顺序②——Disallow 值=专属路径清单、全 URL 列表）
 API 文档：     见 §1.3
 ```
 
@@ -82,7 +84,7 @@ API 文档：     见 §1.3
 
 ### §1.4 命中确认特征 + catch-all 基线（业界亦称 soft 404 / SPA fallback；防「200 即泄露」误报）
 
-1. **先打 catch-all 基线**：GET `/<随机串>-check-xyz`。返回 200 + HTML + >500B + 无敏感关键词 ⇒ 该站是 catch-all（任意路径都 200），**本站所有"200 = 命中"的判定作废**，只能靠内容特征判。
+1. **先打 catch-all 基线**：GET `/<随机串>-check-xyz`。返回 200 + HTML + >500B + 无敏感关键词（登录/密码/token/error/异常 类字样均不出现）⇒ 该站是 catch-all（任意路径都 200），**本站所有"200 = 命中"的判定作废**，只能靠内容特征判。
 2. **每路径内容确认特征**（200 之外的第二判据）：
 
 | 路径 | 必含内容 |
@@ -100,18 +102,18 @@ API 文档：     见 §1.3
 
 | 规则库 | 内容 | 匹配位置 |
 |---|---|---|
-| 0x727/FingerprintHub | 国内外中间件/OA/CMS 的 JSON 规则，按产品分文件 | path + header + body 关键字 |
-| EHole_magic（lemonlove7，EHole 魔改版） | 红队常用指纹库 | title / body keyword / favicon hash |
-| Wappalyzer 规则（technologies.json） | 通用技术栈，含 implies 推导链；httpx `-tech-detect` 内置同源规则 | header / cookie / html / meta / script src |
-| whatweb 插件（~1900 个） | 插件式匹配 | header / body / url / 版本正则 |
-| nuclei-templates `http/technologies` | 模板化技术检测 | 任意请求-响应组合 |
+| 0x727/FingerprintHub（`github.com/0x727/FingerprintHub`） | 国内外中间件/OA/CMS 的 JSON 规则，按产品分文件 | path + header + body 关键字 |
+| EHole_magic（`github.com/lemonlove7/EHole_magic`，EHole 魔改版） | 红队常用指纹库 | title / body keyword / favicon hash |
+| Wappalyzer 规则（`github.com/wappalyzer/wappalyzer` 的 technologies.json） | 通用技术栈，含 implies 推导链；httpx `-tech-detect` 内置同源规则 | header / cookie / html / meta / script src |
+| whatweb 插件（`github.com/urbanadventurer/whatweb`，~1900 个） | 插件式匹配 | header / body / url / 版本正则 |
+| nuclei-templates（`github.com/projectdiscovery/nuclei-templates` 的 `http/technologies`） | 模板化技术检测 | 任意请求-响应组合 |
 
 流程：
 
-1. 备响应集：已落盘的响应头 + 正文（首页、错误页、静态资源）+ favicon。
-2. 克隆/更新规则库到工作目录（`git pull`），**报告注明所用库与 commit**——指纹结论依赖规则库版本。
+1. 备响应集：已落盘的响应头 + 正文（首页、错误页、静态资源）+ favicon（取 `/favicon.ico`，属静态资源 GET ①；首页 HTML 的 `<link rel="icon">` 给了地址则从之）。
+2. 克隆/更新规则库到工作区（`git pull`），**报告注明所用库与 commit**——指纹结论依赖规则库版本。
 3. 逐规则在响应集上匹配：规则 =（位置，特征串/正则，产品名，可选版本正则）。命中 ⇒ 指纹表加一行：产品+版本+证据（规则来源 + 命中的响应文件）。
-4. 规则要求特定 path 的响应而本地没有的（如 /actuator/env 确认 Spring），回到 §1.1 矩阵逐路径 1 发补齐——矩阵与规则库是互补关系：矩阵保底高频路径，规则库管广度。
+4. 规则要求特定 path 的响应而本地没有的（如 /actuator/env 确认 Spring），回到 §1.1 矩阵逐路径 1 发补齐（即 §1.2 探测顺序④的同一条道，计入白名单探测额度（数值见 SKILL.md「速率与预算总表」），不另立调度）——矩阵与规则库是互补关系：矩阵保底高频路径，规则库管广度。
 5. favicon hash：favicon 内容 base64 后取 mmh3。hash 直接用于测绘引擎反查（FOFA `icon_hash=""`、Shodan `http.favicon.hash:`），同 hash 的其他资产常属同组织。
 
 口径：不复制规则内容进本技能（会过时）；版本串以响应原文为准，规则正则提取的版本写进证据。
@@ -120,21 +122,23 @@ API 文档：     见 §1.3
 
 大 JS 文件可能只下载一部分：HTTP 200、退出码 0，工具不报错。基于残缺文件的提取会漏接口。
 
-- 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（`--gap` 数值以 SKILL.md「速率与预算总表」为准，脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
+- 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（`--retry`/`--gap` 数值以 SKILL.md「速率与预算总表」为准；`--gap` 脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
+- **单域名/URL 冷启动**（无现成 urls.txt 时）：首页 URL（`https://<域名>/`）写入 urls.txt → 按上一条 safe_fetch 拉取（授权类别 ①）→ 对落盘 HTML 跑 `extract_endpoints.py`（html 通道吃 href/src）→ 命中的 JS/CSS/manifest 地址追加 urls.txt 第二轮拉取 → 再走下方二跳补抓。
 - 判据一条：**实收字节数 == 响应头 Content-Length**。不符重抓。chunked 传输（无 CL）→ 判定 CHUNKED：**可用于提取**、产物标注"不可校验"，不进重试（重试也长不出 CL）。
 - 经验阈值：>700KB 的文件重点盯。
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
 - 构建漂移检测：同一主文件下 3 次比对哈希；同一地址返回不同内容 ⇒ 后端多节点版本不一致，记录。
 - **chunk 清单入口**（拿全量 JS 文件名）：`/asset-manifest.json`、`/webpack-manifest.json`、`runtime~main.*.js`（runtime chunk 含全部 chunk 映射）；抓不到清单时按常见名兜底猜路径：`/main.js /app.js /bundle.js /runtime.js /vendor.js /_next/static/_buildManifest.js`。
-- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。
-  - 重跑幂等（阴性结论，三连跑实测）：追加 URL 重跑安全——同 URL 重抓原地覆盖、历史判定保留、撞名自动改名并告警，报告/文件数不翻倍（机制见 safe_fetch docstring）。
+- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取（追加前按硬性规则 6 过滤 host——第三方域的文件只记录 URL、不下载）——三者**都不从首页引用**，不主动拉永远拿不到；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。
+  - .css 为何单独提：`--dir` 扫描范围已含 .css，但只扫已落盘文件——不进二跳清单，CSS chunk 永远不会被拉到本地。
+  - 重跑幂等（阴性结论，三连跑实测）：追加 URL 重跑安全——同 URL 重抓原地覆盖、历史判定保留、撞名自动改名并告警，判定文件/文件数不翻倍（机制见 safe_fetch docstring）。
 - **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
 - **下载判定联动（机械执行）**，四个要点：
-  - ① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（口径同 SKILL.md 规则 4 与 delivery §0）；
+  - ① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（准入处置权威见 delivery §0）；
   - ② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进入口清单；
   - ③ 判定文件自身不进提取；
-  - ④ 「无报告且无侧车」才是正常态——报告缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截；无侧车的外部来源文件如实声明无法复核、已进入提取。
-  三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径；脚本侧机制（侧车重建、报告合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring，改动后跑 evals 回归。<!-- 历史：报告损坏曾需「三件套」降级（告警/侧车重建/退出码 1）；侧车拦截曾依赖报告存在，「无报告+侧车在场」缝隙为实测发现后修复；safe_fetch 与提取脚本退出码语义不同（前者 4xx 也返回 1）。详见 git log 与脚本注释 -->
+  - ④ 「无判定文件且无侧车」才是正常态——判定文件缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截（`.hdr` 首行自带 `Status:` 码，判定文件损坏时可从侧车完整重建判定，机制见 safe_fetch.py 注释）；无侧车的外部来源文件如实声明无法复核、已进入提取。
+  三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径；脚本侧机制（侧车重建、判定文件合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring，改动后跑 evals 回归。
 - **内容嗅探兜底**：无判定文件时，.js 路径存成 HTML 错误页按 HTML 处理——扩展名与内容类型脱钩不再整页静默漏。
 - **sourcemap**：JS 尾部 `sourceMappingURL=`；**内联式**（`sourceMappingURL=data:application/json;base64,...` 打进 JS 本身）base64 解码即得完整 map——比外链 .map 更隐蔽且常被忽略；历史 map 用 Wayback CDX `filter=original:.*\.js\.map$` 挖。三种来源的 `sourcesContent[]` 都是前端完整源码（含后来删除的硬编码密钥、内部接口、注释）+ 源码文件清单，**完全离线零新增请求**。仅取有明确引用或已存在的 map，不盲猜路径。
 
@@ -153,7 +157,7 @@ curl "web.archive.org/web/<timestamp>id_/<original_url>"
 
 - **能拿**：历史 GET 的完整响应体（接口包络、字段结构、脱敏前的数据结构）、URL 查询串参数（随 original 完整保留）——参数结构的系统化来源，补手工填参。
 - **拿不到**：POST 请求体。Wayback 的 capture 单元是爬虫的 GET 响应，请求载荷不入库；CDX 也无 method 字段。别去归档里找提交表单的 POST。
-- 归档端点可能已死/已易主：回捞结果照常进入口清单（来源=历史归档），复核存活后才算已验证。
+- 归档接口可能已死/已易主：回捞结果照常进入口清单（来源=历史归档），复核存活后才算已验证。
 - 请求对象是 web.archive.org（第三方），不占目标预算；对归档端保持 ≤1 请求/秒。
 
 ## §3 接口提取：静态路线（必跑）
@@ -168,25 +172,25 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 
 1. **正则产出只是嫌疑名单**。高价值条目取上下文 ±150 字符核验是不是真调用点——局部匹配会把 SDK 错误码常量误判成接口。
 2. **`url:` 不一定是首键**，方法键可能是复数 `methods:`——匹配任意位置的 `url:`。
-3. **路径里的动态段保留占位符**：`"/a/".concat(id, "/b")` 的正确还原是 `/a/{id}/b`，不是 `/a/b`——后者既多报（伪路径）又漏报（真前缀丢失）。反过来，**纯字符串字面量之间的裸 `+` 是确定性拼接**（合法 JS 里唯一解释），直接连接不产占位符——占位符语义是"需填写的动态段"，空拼接点标 `{expr}` 会让阶段 3 拿必 404 的假路径探测。
+3. **路径里的动态段保留占位符**：`"/a/".concat(id, "/b")` 的正确还原是 `/a/{id}/b`，不是 `/a/b`——后者既多报（伪路径）又漏报（真前缀丢失）。反过来，**纯字符串字面量之间的裸 `+` 是确定性拼接**（合法 JS 里唯一解释），直接连接不产占位符——占位符语义是"需填写的动态段"，空拼接点标 `{expr}` 会让阶段 3 拿必 404 的假路径试探。
 4. **不以 `/` 开头的接口路径是真实存在的**（`url:"face/batchImport"`），归一化补 `/`，不过滤。
-5. **隐藏接口第二遍**（`--hidden`）：上传组件的 `action:`、`uploadUrl = "..."` 等 **`:` 键与 `=` 赋值两种写法都收**（赋值取值带语句边界与 ASI 续行启发）的变量承载地址不经过 axios 封装，只扫 `url:` 必漏；变量声明与调用点分处两地，要配对反查。
+5. **隐藏接口第二遍**（`--hidden`）：上传组件的 `action:`、`uploadUrl = "..."` 等 **`:` 键与 `=` 赋值两种写法都收**（后者带语句边界与 ASI 续行启发）。这类变量承载的地址不经过 axios 封装，只扫 `url:` 必漏；变量声明与调用点分处两地，要配对反查。
 6. **交叉验证防噪声**：隐藏形态的命中若与已知接口零重合，先怀疑规则误抓（图表库/播放器内部字段），不急着入清单。
-7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中），通道直方图与粗筛/精提对账对其生效。<!-- 历史：本规则曾长期只是承诺未实现，call 通道与模板串引号类扩展均为实测双漏后补齐，用例见 evals C10-C19 -->
+7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列（脚本 CSV 列名，并入入口清单后对应「方法」列）、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中），通道直方图与粗筛/精提对账对其生效（用例见 evals C10-C19）。
 8. **WebSocket / SSE / GraphQL 通道**：`new WebSocket(...)`、`new EventSource(...)` 的值表达式按占位符规则重建（方法列记 WSS / SSE）；`wss?://` 字面量记形态 wss-url；`operationName:` 记形态 graphql-op（配合 /graphql 端点用）。均有提取产出，不再只是规则承诺。
 9. **前缀常量回填**：`{API_HOST}` 类前缀占位符对照全文件常量表（`NAME = "https://..."` / `wss://`）自动回填基址并剥占位符；表里没有才标"需人工解析"。占位符在路径中段的不剥（防破坏路径）。
 
 **盲区可见性（两件机械防线 + 一条诚实边界）**：
 
-1. **通道健康直方图**：精提报告固定打印各通道命中数（**零也在场**）——某通道整库为 0 本身是信号（裸 fetch 盲区修复前 fetch 恒 0 而无人看见）。
-2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
+1. **通道直方图**：精提报告固定打印各通道命中数（**零也在场**）——某通道整库为 0 本身是信号（裸 fetch 盲区修复前 fetch 恒 0 而无人看见）。
+2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。粗筛分级 gradeA/B/C（C=路由/组件路径倾向）；对账仅覆盖 gradeA/B——gradeC 不进对账点名（人工兜底，是分级设计而非盲区）。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
 3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端写法时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道。
 
 **参数名来源（入口清单「参数」列的三个来源，不再手填）**：① `extract_endpoints.py` CSV 的 `参数名` 列（url 容器对象里 `params:{...}`/`data:{...}` 的键名）与 `query` 列（URL 字面量查询串）；② 归档 URL 查询串（§2.5）；③ 语言包/配置里的权限词仅作候选排序线索，不当参数。路径占位符（`{id}`）在路径列，不与参数混。
 
 ## §4 接口提取：运行时路线（有浏览器时）
 
-静态看不到的：运行时拼接的 URL、服务端下发的配置、需要交互才触发的调用。
+静态看不到的：运行时拼接的 URL、服务端下发的配置、需要交互才触发的调用。本路线产出并入入口清单时**来源=运行时捕获**（delivery §1 词表值）。
 
 1. **页面资源清单**（页面打开后执行）：
    ```js
@@ -200,8 +204,8 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
    document.querySelector('#app').__vue_app__._context                // Vue3
    __BUILD_MANIFEST.sortedPages                                        // Next.js（控制台）：含动态路由 /[slug]
    ```
-   路由表与可见菜单做 diff，发现隐藏功能页（提交页/管理页类）。`/#/` 片段路由普通 HTTP 重取只能拿到根文档，需无头浏览器渲染。
-4. **覆盖范围**：钩子只捕获客户端发起的请求；服务端渲染页面的数据在 HTML 里（`__NUXT__` / `__NEXT_DATA__` / `window.__CONFIG__` / `window.__INITIAL_STATE__`），零客户端请求是正常现象，读注水数据。跨域整页跳转会杀掉钩子，需重注入。
+   路由表与可见菜单做 diff，发现隐藏功能页（提交页/管理页类）。`/#/` 片段路由普通 HTTP 重取只能拿到根文档，须按本路线用浏览器渲染（§4 前提即有浏览器）；无浏览器时记入未闭环清单。
+4. **捕获范围**：钩子只捕获客户端发起的请求；服务端渲染页面的数据在 HTML 里（`__NUXT__` / `__NEXT_DATA__` / `window.__CONFIG__` / `window.__INITIAL_STATE__`），零客户端请求是正常现象，读注水数据。跨域整页跳转会杀掉钩子，需重注入。
 5. CSS 也过一遍：`url()` 引用、`@import`、CSS 内 sourcemap 引用（常漏的资产与域名来源）。
 
 ## §5 定位真实 API 基址（不猜）
@@ -213,7 +217,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 3. 构建时注入的环境变量：`NODE_ENV:"production"` 附近 900 字符；**前端构建前缀** `VITE_*` / `REACT_APP_*` / `NEXT_PUBLIC_*`（dev 配置残留时整组泄露，如 VITE_JWT_SECRET）。
 4. 后端托管平台模式：`*.fly.dev / azurewebsites.net / vercel.app / netlify.app / supabase.co / r2.dev`——`dpl_*`（Vercel 部署 ID）与 Supabase anon key 是公开值，只记 URL 不当密钥。
 
-域外接口只记录，标注「需另行授权」，不请求。
+第三方域与兄弟域接口只记录，标注「需另行授权」，不请求（范围词形按硬性规则 6）。
 
 ## §6 敏感信息 grep（本地跑，零请求）
 
@@ -221,11 +225,18 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 
 | 类别 | 模式 |
 |---|---|
-| 云/厂商密钥 | `AKIA[0-9A-Z]{16}`(AWS)、`ghp_`/`github_pat_`、`sk-ant-`/`sk-proj-`、`xox[abpors]-`(Slack)、`SG\.\w+\.\w+`(SendGrid)、`dop_v1_`(DO)、`hf_`、`npm_`、`dckr_pat_` |
+| 云/厂商密钥 | `AKIA[0-9A-Z]{16}`(AWS)、`LTAI[A-Za-z0-9]{12,20}`(阿里云)、`AKID[A-Za-z0-9]{13,40}`(腾讯云)、`ghp_`/`github_pat_`、`sk-ant-`/`sk-proj-`、`AIza[0-9A-Za-z_-]{35}`(Google)、`xox[abpors]-`(Slack)、`sk_live_`/`rk_live_`(Stripe)、`SG\.\w+\.\w+`(SendGrid)、`dop_v1_`(DO)、`hf_`、`npm_`、`dckr_pat_` |
 | 通用 | JWT（`eyJ` 长串）、`BEGIN .* PRIVATE KEY`、DB 连接串 `(mongodb|mysql|postgres)://`、`wss?://` 端点 |
-| 变量名 | `JWT_SECRET`、`secretKey`、`salt`、`getSign`、`CryptoJS`、`JSEncrypt` |
+| 手机号 | `1[3-9][0-9]{9}`（加前后非数字边界——防毫秒时间戳误报，见下） |
+| 变量名 | `JWT_SECRET`、`secretKey`、`appsecret`/`app_secret`（微信等 SDK 配置，无固定形状走变量名）、`salt`、`getSign`、`CryptoJS`、`JSEncrypt` |
 | 内网 | RFC1918 段；内部域名 TLD `\.(internal|corp|lan|intranet|local|prod|staging|dev|qa)\b`；K8s DNS `[a-z0-9\-]+\.[a-z0-9\-]+\.svc(.cluster.local)?` |
 | 第三方 | SDK 的 app_id、云账号 ID `arn:aws:\w+:\w*:(\d{12}):` |
+
+命令示例（对已下载目录全文跑，前缀正则取自上表高频项）：
+
+```bash
+grep -rEn "AKIA[0-9A-Z]{16}|LTAI[A-Za-z0-9]{12,20}|ghp_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|sk_live_[0-9a-zA-Z]{16,}" <js目录> --include="*.js"
+```
 
 **防误报**（报泄露前先看上下文 40 字符）：
 
@@ -249,7 +260,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 python scripts/scan_comments.py --dir <文本目录> --csv clues.csv
 ```
 
-- **独立产物线**：产出 `注释线索清单`，**不并入泄露点清单**——线索 ≠ 已确认泄露，核验（上下文+实际请求）后才升级。混淆会污染定级。
+- **独立产物线**：产出 `注释线索清单`，**不并入泄露点清单**——线索 ≠ 已确认泄露，核验（定义见 delivery §1.5）后才升级。混淆会污染定级。
 - **内网 IP 二道判据（置信列）**：形状命中后看语境——伴随 内网/网关/直连/端口/URL/服务器 等线索词 ⇒ 高置信；版本号/UA/时间戳语境 ⇒ 低置信；同值多语境出现置信只升不降。核验按高置信优先。
 - license 抑制内置：`@license / Copyright / Licensed under` 横幅整块滤除，重复横幅合并计数，不刷屏。
 - 文件覆盖：js/ts/css 家族（`//` 与 `/* */`）、HTML（`<!-- -->`）、**.vue 双区**（模板 HTML 注释 + 脚本 JS 注释都扫）；JSON/.map 无注释语法，跳过并计数；行号+上下文随线索给出。
@@ -257,7 +268,6 @@ python scripts/scan_comments.py --dir <文本目录> --csv clues.csv
 - 阴性也要报："注释 0 命中"是有效结论（历史上验证过整站注释无隐藏接口）。
 
 ## §7 源码与文档侦察（零目标流量；查询对象是第三方平台，授权依据 = SKILL.md 硬性规则 5）
-
 
 - GitHub 组织仓库：`api.github.com/orgs/<org>/repos?sort=updated` 看 visibility——新公开仓库即潜在泄露。
 - 代码搜索 dork（gh CLI 或网页）：`org:<目标> password`、`org:<目标> api_key`、`org:<目标> "BEGIN PRIVATE KEY"`、`filename:.env`、`"<域名>" password`。
@@ -268,7 +278,7 @@ python scripts/scan_comments.py --dir <文本目录> --csv clues.csv
 
 移动端是常被忽略的接口面：更新滞后（比 Web 前端旧几个版本的 API 仍在用）、硬编码 key、内部/测试环境域名高频出现。
 
-获取：站点提供的 apk 直链（常见于 `/download`、`/app` 页——页面与静态资源请求 ✓）；应用商店页元信息（平台侧查询）。IPA 一般无公开直链，拿到再处理。
+获取：站点提供的 apk 直链（常见于 `/download`、`/app` 页——页面与 apk 文件本身是静态资源 GET，属授权类别 ①）；应用商店页元信息（平台侧查询）。IPA 一般无公开直链，拿到再处理。
 
 APK 分析阶梯（按工具可用性降级，最低 strings 保底）：
 
@@ -276,15 +286,17 @@ APK 分析阶梯（按工具可用性降级，最低 strings 保底）：
 2. 有 apktool/jadx 时：反编译拿 Manifest 明文（**exported 组件 + deeplink `scheme://host/path` = 隐藏 API 面**）、smali/java 里 grep okhttp/retrofit 的 base_url 与常量。
 3. 保底：`strings classes*.dex | grep -E 'https?://|/api/' | sort -u`——纯本地，任何环境可跑。
 
+混合应用解包出的 JS/HTML bundle 不止 strings——照常进入步骤 4 脚本提取与步骤 5 grep（`--dir` 指向解包目录即可）。
+
 iOS IPA：`unzip app.ipa` → `Payload/*.app`：`Info.plist` 的 URL schemes、主二进制 `strings | grep` URL 与域名。
 
-产出并入既有产物线（不新建产物）：接口/路由 → 入口清单（**来源=移动端提取**，站点取值见 delivery §1.5 三态规则：直链→该站点、商店→主域、用户提供→`-` 且备注写提供者）；密钥 → leaks（备注"来自 apk"+站点同样按三态）；内网域名/旧环境 → clues。deeplink 记录 scheme+host+path 于备注。
+产出并入既有产物线（不新建产物）：接口/路由 → 入口清单（**来源=移动端提取**，站点取值见 delivery §1.5 三态规则：直链→该站点、商店→主域、用户提供→`-` 且备注写提供者）；密钥 → leaks（对解包产物与 strings 输出跑 §6 正则表，备注"来自 apk"+站点同样按三态）；内网域名/旧环境 → clues。deeplink 记录 scheme+host+path 于备注。
 
 红线：只做静态解包 + 本地 grep（零目标流量）；模拟器动态运行 / 移动端抓包属后续独立任务，须另行批准。
 
 ## 产出
 
-产物并入 delivery §1/§1.5 契约——列名、来源词表值、状态词表均以其为准，此处不复制。phase2 特有事项：
+产物并入 delivery §1/§1.5 契约——列名、来源词表值、词表均以其为准，此处不复制。phase2 特有事项：
 
 - 指纹表含 §1.1–§1.4 命中记录；`wss://` 命中同入口清单（方法列记 WSS）
 - 备注可标高价值类别（admin/internal/debug、upload/import/export/download、user/account/order 类 IDOR 高发、search/query/filter 类）
