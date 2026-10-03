@@ -69,7 +69,8 @@ curl -k -s --proxy http://127.0.0.1:8080 -A "$UA" -m 20 -D resp.hdr -o resp.body
 脚本自检（离线，零目标请求）：
 
 ```bash
-python evals/run_regression.py        # 分组覆盖面见该脚本文件头；断言数以运行输出为准（数字不复制，防漂移）
+python evals/run_regression.py        # 单元回归：分组覆盖面见该脚本文件头；断言数以运行输出为准（数字不复制，防漂移）
+python evals/run_scenario.py          # 场景回归（第二道网）：planted 站点端到端召回/缺席点验
 ```
 
 **改动任一脚本后先跑它。** 判定联动这类机制不会崩，只会**静默失效**——报告里照样写着"排除 N 个"，实际一个没排。这类退化只有断言能拦住，肉眼 review 拦不住。

@@ -2,7 +2,7 @@
 name: api-extract
 description: 授权范围内 Web API 接口提取、敏感信息挖掘与只读接口验证。用户给出 JS 目录/URL/域名/apk 要求提取接口、挖掘密钥、分析前端资源中的接口与泄露时使用；用户要求验证接口、测哪些不要 token、批量确认接口存在性与鉴权时使用。输入支持站点清单 CSV（任意来源）、单域名、URL、本地目录、apk/ipa。不做越权/写入/注入测试，验证只发 GET/HEAD/OPTIONS。
 compatibility: "Python 3.8+（仅标准库）；hook_inject.js 无依赖；无其它技能依赖"
-version: "2.34"
+version: "2.35"
 ---
 
 # API 提取与接口验证
@@ -134,4 +134,4 @@ version: "2.34"
 | `scripts/hook_inject.js` | 浏览器 fetch/XHR 捕获 |
 | `scripts/yakit_db_probe.py` | 只读复盘 Yakit 流量库（Yakit 用户可选） |
 
-依赖见 frontmatter `compatibility`。改动任一脚本后先跑 `python evals/run_regression.py`（离线零网络）。
+依赖见 frontmatter `compatibility`。改动任一脚本后先跑 `python evals/run_regression.py`（单元回归），再跑 `python evals/run_scenario.py`（场景回归——planted 站点端到端召回；两道网均离线零网络）。
