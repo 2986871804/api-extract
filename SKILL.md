@@ -2,7 +2,7 @@
 name: api-extract
 description: 授权范围内 Web API 接口提取、敏感信息挖掘与只读接口验证。用户给出 JS 目录/URL/域名/apk 要求提取接口、挖掘密钥、分析前端资源中的接口与泄露时使用；用户要求验证接口、测哪些不要 token、批量确认接口存在性与鉴权时使用。输入支持站点清单 CSV（任意来源）、单域名、URL、本地目录、apk/ipa。不做越权/写入/注入测试，验证只发 GET/HEAD/OPTIONS。
 compatibility: "Python 3.8+（仅标准库）；hook_inject.js 无依赖；无其它技能依赖"
-version: "2.35"
+version: "2.36"
 ---
 
 # API 提取与接口验证
@@ -85,7 +85,7 @@ version: "2.35"
    - 源码与文档侦察：GitHub org / 协作文档（零目标流量）
 6. **移动端**：apk 解包三阶梯 / ipa 解压。
 
-**产出**：入口清单.csv（全部状态=未验证）+ leaks.csv + clues.csv + fingerprints.csv（列契约见 delivery §1/§1.5——其中 clues 以 scan_comments.py 输出列为权威、delivery 转载；不另行发明列）。
+**产出**：入口清单.csv（全部状态=未验证）+ leaks.csv + clues.csv + fingerprints.csv（列契约见 delivery §1/§1.5——其中 clues 以 scan_comments.py 输出列为权威、delivery 转载；不另行发明列）；多站点合并后跑 `reconcile_list.py` 终清单对账——精提每条路径必须在清单在场，丢行=交付缺陷（delivery §1）。
 
 ## 阶段 3：验证（低频只读）
 
@@ -116,6 +116,7 @@ version: "2.35"
 |---|---|
 | 通道直方图 | 各通道命中数，零也是信号 |
 | 粗筛/精提对账 | `extract_apis.py --reconcile-fine`——盲区候选点名 |
+| 终清单对账 | `reconcile_list.py`——精提每条路径在最终入口清单在场核验，补齐粗筛↔精提之外的最后一环（人工汇编丢行=交付缺陷） |
 | 下载判定联动 | 非 OK 判定的准入处置见 delivery §0；.hdr 侧车在场即权威（判定文件缺失也拦截，phase2 §2） |
 | .hdr 侧车 | 判定文件损坏时降级复核 |
 | 响应体待批准 | 挖掘产物不自动进入验证（点名规则见 phase3「响应体挖掘」） |
@@ -131,6 +132,7 @@ version: "2.35"
 | `scripts/extract_endpoints.py` | 精提（`--hidden` `--site`） |
 | `scripts/scan_comments.py` | 注释线索（置信分级） |
 | `scripts/mine_responses.py` | 响应体挖掘（零请求，待批准） |
+| `scripts/reconcile_list.py` | 终清单对账（精提 CSV vs 入口清单；汇编丢行=交付缺陷） |
 | `scripts/hook_inject.js` | 浏览器 fetch/XHR 捕获 |
 | `scripts/yakit_db_probe.py` | 只读复盘 Yakit 流量库（Yakit 用户可选） |
 

@@ -30,6 +30,7 @@ import extract_endpoints as ee          # noqa: E402
 import extract_apis as ea               # noqa: E402
 import scan_comments as sc              # noqa: E402
 import mine_responses as mr             # noqa: E402
+import reconcile_list as rl             # noqa: E402
 
 PASS = FAIL = 0
 
@@ -240,6 +241,25 @@ chk("E7 危险词 camel 组合段仍命中", mr.danger_hit("/api/resetPassword")
 print("== F 粗筛分级 ==")
 chk("F1 grade A/B/C", ea.grade("/api/user") == "A" and ea.grade("/get/list") == "B"
     and ea.grade("/static/img") == "C")
+
+# ---------------------------------------------------------------- G 终清单对账
+print("== G 终清单对账 ==")
+_fine = {"/api/v1/users/list", "/user/profile", "/notice/detail",
+         "/users/{id}/orders", "/dh/uploadDhFile"}
+_entry = [("JS提取", "/api/v1/users/list"), ("JS提取", "/user/profile"),
+          ("JS提取", "/users/123/orders"),          # 数字段归一化后与 {id} 同键
+          ("JS提取", "/dh/uploadDhFile"),
+          ("PROBE", "/actuator/mappings")]          # 精提之外——只提示不判缺陷
+_missing, _extra = rl.reconcile(_fine, _entry)
+chk("G1 汇编丢行被抓（/notice/detail 缺失即交付缺陷）", _missing == ["/notice/detail"])
+chk("G2 占位符/数字段归一化匹配（{id} 对 123 不误报缺失）", "/users/{}/orders" not in _missing)
+chk("G3 精提之外只提示不判缺陷（PROBE 行入 extra）",
+    any(p == "/actuator/mappings" for _, p in _extra))
+_m2, _ = rl.reconcile(_fine, _entry + [("JS提取", "/notice/detail")])
+chk("G4 补齐后零缺失", _m2 == [])
+chk("G5 URL 剥 scheme/host/query 取路径",
+    rl.url_to_path("https://api.x.com/v9/data?a=1") == "/v9/data"
+    and rl.url_to_path("wss://h.io/api/ws") == "/api/ws")
 
 print("\n===== %d 通过 / %d 失败 =====" % (PASS, FAIL))
 sys.exit(0 if FAIL == 0 else 1)
