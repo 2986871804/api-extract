@@ -94,7 +94,7 @@ API 文档：     见 §1.3
 | `/server-status` | "Apache Server Status" |
 | phpinfo | "PHP Version" |
 
-### §1.6 指纹规则库（GitHub 现成资源，离线比对）<!-- §1.5 编号留空，避让 delivery §1.5 -->
+### §1.5 指纹规则库（GitHub 现成资源，离线比对）
 
 指纹不自己维护矩阵——用社区维护的规则库对**已落盘的响应集**做离线匹配，零新增请求：
 
@@ -126,9 +126,15 @@ API 文档：     见 §1.3
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
 - 构建漂移检测：同一主文件下 3 次比对哈希；同一地址返回不同内容 ⇒ 后端多节点版本不一致，记录。
 - **chunk 清单入口**（拿全量 JS 文件名）：`/asset-manifest.json`、`/webpack-manifest.json`、`runtime~main.*.js`（runtime chunk 含全部 chunk 映射）；抓不到清单时按常见名兜底猜路径：`/main.js /app.js /bundle.js /runtime.js /vendor.js /_next/static/_buildManifest.js`。
-- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。**重跑幂等（阴性结论，三连跑实测）**：追加 URL 重跑安全——同 URL 重抓原地覆盖、历史判定保留、撞名自动改名并告警，报告/文件数不翻倍（机制见 safe_fetch docstring）。
+- **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取——语言包、CSS chunk 与懒 chunk **都不从首页引用**，不主动拉永远拿不到（本地 `--dir` 已能扫 .css，前提是文件先拉下来）；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。
+  - 重跑幂等（阴性结论，三连跑实测）：追加 URL 重跑安全——同 URL 重抓原地覆盖、历史判定保留、撞名自动改名并告警，报告/文件数不翻倍（机制见 safe_fetch docstring）。
 - **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
-- **下载判定联动（机械执行，四个要点）**：① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（口径同 SKILL.md 规则 4 与 delivery §0）；② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进入口清单；③ 判定文件自身不进提取；④ **「无报告且无侧车」才是正常态**——报告缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截；无侧车的外部来源文件如实声明无法复核、已进入提取。三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径。脚本侧机制（侧车重建、报告合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring；改动任一脚本后跑 evals 回归。<!-- 历史：报告损坏曾需「三件套」降级（告警/侧车重建/退出码 1）；侧车拦截曾依赖报告存在，「无报告+侧车在场」缝隙为实测发现后修复；safe_fetch 与提取脚本退出码语义不同（前者 4xx 也返回 1）。详见 git log 与脚本注释 -->
+- **下载判定联动（机械执行）**，四个要点：
+  - ① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（口径同 SKILL.md 规则 4 与 delivery §0）；
+  - ② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进入口清单；
+  - ③ 判定文件自身不进提取；
+  - ④ 「无报告且无侧车」才是正常态——报告缺失或损坏但同目录有 `.hdr` 侧车时，侧车即权威、照常拦截；无侧车的外部来源文件如实声明无法复核、已进入提取。
+  三个提取/扫描脚本行为一致，`--files` 与 `--dir` 走同一条过滤路径；脚本侧机制（侧车重建、报告合并、撞名改名、退出码语义、BOM 容错）见各脚本 docstring，改动后跑 evals 回归。<!-- 历史：报告损坏曾需「三件套」降级（告警/侧车重建/退出码 1）；侧车拦截曾依赖报告存在，「无报告+侧车在场」缝隙为实测发现后修复；safe_fetch 与提取脚本退出码语义不同（前者 4xx 也返回 1）。详见 git log 与脚本注释 -->
 - **内容嗅探兜底**：无判定文件时，.js 路径存成 HTML 错误页按 HTML 处理——扩展名与内容类型脱钩不再整页静默漏。
 - **sourcemap**：JS 尾部 `sourceMappingURL=`；**内联式**（`sourceMappingURL=data:application/json;base64,...` 打进 JS 本身）base64 解码即得完整 map——比外链 .map 更隐蔽且常被忽略；历史 map 用 Wayback CDX `filter=original:.*\.js\.map$` 挖。三种来源的 `sourcesContent[]` 都是前端完整源码（含后来删除的硬编码密钥、内部接口、注释）+ 源码文件清单，**完全离线零新增请求**。仅取有明确引用或已存在的 map，不盲猜路径。
 
