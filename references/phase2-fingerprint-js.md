@@ -179,6 +179,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列（脚本 CSV 列名，并入入口清单后对应「方法」列）、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中），通道直方图与粗筛/精提对账对其生效（用例见 evals C10-C19）。
 8. **WebSocket / SSE / GraphQL 通道**：`new WebSocket(...)`、`new EventSource(...)` 的值表达式按占位符规则重建（方法列记 WSS / SSE）；`wss?://` 字面量记形态 wss-url；`operationName:` 记形态 graphql-op（配合 /graphql 端点用）。均有提取产出，不再只是规则承诺。
 9. **前缀常量回填**：`{API_HOST}` 类前缀占位符对照全文件常量表（`NAME = "https://..."` / `wss://`）自动回填基址并剥占位符；表里没有才标"需人工解析"。占位符在路径中段的不剥（防破坏路径）。
+10. **裸模板串通道**（形态=tpl）：无调用上下文的 `` `/api/v2/goods/${t.id}/comments` `` 裸模板串——fetch/call 首参各有通道、`url:` 键与 hidden 变量各有所属，裸值三闸都不碰（曾靠诚实边界+人工补录兜底，实测有随机性，故补通道）；只收含 `${` 插值的反引号字面量（无插值裸模板串由粗筛 STR 正则覆盖），插值走 tokenizer 还原占位符。
 
 **盲区可见性（两件机械防线 + 一条诚实边界）**：
 

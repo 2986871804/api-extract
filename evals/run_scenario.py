@@ -48,7 +48,7 @@ tmp = tempfile.mkdtemp(prefix="apix-scen-")
 site = os.path.join(tmp, "demo-site")
 
 # ---------------------------------------------------------------- planted fixture
-# 预期去重总数 19 = 17 个 planted + WS_HOST 常量裸 wss:// 字面量（wss-url 通道对源码字面量照收）
+# 预期去重总数 20 = 18 个 planted + WS_HOST 常量裸 wss:// 字面量（wss-url 通道对源码字面量照收）
 # + concat 双通道行（url: 键读到 method:post、补充扫 concat 通道方法列 ?——方法不同，
 # 按交付去重键 (URL, 方法) 契约是两行，delivery §1）。sourcemap 的 sourcesContent 用单引号
 # 内嵌源码——JSON 转义不动单引号，url: 通道可直接吃。
@@ -62,6 +62,7 @@ w(os.path.join(site, "dl", "app.js"),
   'new WebSocket(WS_HOST+"/api/ws");\n'
   'new EventSource("/api/stream/sse");\n'
   'const live="wss://x.io/live";\n'
+  'nav(`/api/v2/goods/${t.id}/comments`);\n'
   'client = axios.create(); client.get("/api/alias/miss");\n')
 w(os.path.join(site, "dl", "packed.bin.js"),
   "PK\x03\x04" + "\x00" * 200 + 'fetch("/api/bin/leak");\n')
@@ -90,6 +91,7 @@ PLANTED = [
     "/vue/url/form", "/vue/fetch/form", "/vue/action/form", "/vue/call/form",
     "/api/from/sourcemap/one", "/api/from/sourcemap/two",
     "/api/i18n/export", "/gateway/live/push", "/admin/user/list",
+    "/api/v2/goods/{id}/comments",
 ]
 
 # ---------------------------------------------------------------- 跑提取管线（多文件合流）
@@ -118,7 +120,7 @@ paths = {r["接口路径"] for r in dedup.values()}
 print("== S 场景层（planted 站点端到端）==")
 chk("S1 planted 召回 %d/%d" % (len([p for p in PLANTED if p in paths]), len(PLANTED)),
     all(p in paths for p in PLANTED))
-chk("S2 去重总数恰为 %d（17 planted + WS_HOST 裸字面量 + concat 双通道行），无额外垃圾行" % (len(PLANTED) + 2),
+chk("S2 去重总数恰为 %d（18 planted + WS_HOST 裸字面量 + concat 双通道行），无额外垃圾行" % (len(PLANTED) + 2),
     len(dedup) == len(PLANTED) + 2)
 chk("S3 二进制边界：伪装 .js 被嗅探跳过，埋点接口缺席",
     "/api/bin/leak" not in paths and stats.get("二进制跳过") == 1)

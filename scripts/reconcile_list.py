@@ -59,14 +59,16 @@ def url_to_path(u):
 
 
 def load_fine(paths):
-    """精提 CSV（可多个，多站点）→ 归一化路径集合。要求列名含「接口路径」。"""
+    """精提 CSV（可多个，多站点）→ 归一化路径集合。要求列名含「接口路径」。
+    同样过 url_to_path——wss-url 通道行的「接口路径」本身是 wss:// 绝对地址，
+    不剥 scheme 会折成 /wss:/… 与清单侧不对称（v2.36 实测假阳性：CLI 误报 wss 行缺失）。"""
     out = set()
     for fp in paths:
         with open(fp, encoding="utf-8-sig", newline="") as f:
             for r in csv.DictReader(f):
                 p = (r.get("接口路径") or "").strip()
                 if p:
-                    out.add(_norm_path(p))
+                    out.add(_norm_path(url_to_path(p)))
     return out
 
 

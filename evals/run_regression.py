@@ -127,6 +127,7 @@ w(js, (
     'var dupWsUrl = "wss://dup.io/ws";\n'
     'new WebSocket("wss://dup2.io/rt");\n'
     'new EventSource("https://cdn.other.net/v9/sse/stream");\n'
+    'nav(`/api/v2/goods/${t.id}/comments`);\n'
 ))
 import collections                                                    # noqa: E402
 consts = ee.build_consts([js])
@@ -183,6 +184,9 @@ w(binf, "PK\x03\x04" + "\x00" * 200 + 'fetch("/api/bin/leak");')
 bstats = collections.Counter()
 brecs, _, _, _ = ee.extract_file(binf, stats=bstats)
 chk("C26 二进制嗅探：前 8KB 含 NUL 即跳过，不产垃圾端点", not brecs and bstats.get("二进制跳过") == 1)
+chk("C27 裸模板串通道（tpl，无调用上下文，${t.id} 还原占位符）",
+    any(r["形态"] == "tpl" and r["接口路径"] == "/api/v2/goods/{id}/comments"
+        and r["含占位符"] == "是" for r in recs))
 jf = os.path.join(tmp, "zh-CN.json")
 w(jf, '{"menu":{"export":"api/i18n/export"}}')
 jrecs, _, _, _ = ee.extract_file(jf)
@@ -260,6 +264,16 @@ chk("G4 补齐后零缺失", _m2 == [])
 chk("G5 URL 剥 scheme/host/query 取路径",
     rl.url_to_path("https://api.x.com/v9/data?a=1") == "/v9/data"
     and rl.url_to_path("wss://h.io/api/ws") == "/api/ws")
+_f2 = os.path.join(tmp, "fine-wss.csv")
+w(_f2, "接口路径,基路径,请求方式,形态\n"
+       "wss://ws.demo-app.cn/realtime,,WSS,wss-url\n"
+       "/user/profile,,?,url\n")
+_e2 = os.path.join(tmp, "entry-wss.csv")
+w(_e2, "URL,方法,来源\n"
+       "wss://ws.demo-app.cn/realtime,WSS,JS提取\n"
+       "/user/profile,?,JS提取\n")
+_m3, _ = rl.reconcile(rl.load_fine([_f2]), rl.load_entry(_e2))
+chk("G6 CLI 同口径：精提侧 wss 绝对地址不再误报缺失（load_fine 补剥 scheme）", _m3 == [])
 
 print("\n===== %d 通过 / %d 失败 =====" % (PASS, FAIL))
 sys.exit(0 if FAIL == 0 else 1)

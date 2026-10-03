@@ -766,6 +766,32 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                      "可疑": "框架调用点（axios/$http/http/request）", "来源文件": os.path.basename(path),
                      "值表达式": m.group(2)[:160]})
 
+    # 裸模板串字面量（形态=tpl）：无调用上下文的 `/api/v2/goods/${t.id}/comments`——fetch/call
+    # 首参各有通道、`url:` 键与 hidden 变量各有所属，裸值三闸都不碰（曾靠诚实边界+人工补录
+    # 兜底，实测有随机性，补成本通道）。只收含 ${ 插值的反引号字面量——无插值裸模板串由
+    # 粗筛 STR 正则覆盖（C19），收了会双计。捕获组带反引号整体喂 tokenizer（其模板串分支
+    # 要求串以 ` 开头，剥引号喂进去会被当成单个 dyn token 折成 {expr}——实测踩过）。
+    # 与 fetch/call 的模板首参会重复出一行（方法列 GET/? 不同，按交付 (URL, 方法) 契约是两行），
+    # 合并去重时自然并轨。
+    for m in re.finditer(r'(`[^`\\\n]{2,200}`)', text):
+        if "${" not in m.group(1):
+            continue
+        toks = _tokenize_value(m.group(1))
+        raw, has_ph = rebuild_path(toks)
+        p, q, _ = normalize(raw)
+        if not p or len(p) < 4 or "/" not in p \
+                or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
+            stats["tpl噪声"] += 1
+            continue
+        p, bres, sus = resolve_prefix(p, "", consts)
+        stats["tpl形态"] += 1
+        recs.append({"接口路径": p, "基路径": bres or base_of(p),
+                     "请求方式": "?", "形态": "tpl",
+                     "含占位符": "是" if has_ph else "否",
+                     "query": ("?" + q) if q else "", "参数名": "",
+                     "可疑": sus or "裸模板串（含插值）", "来源文件": os.path.basename(path),
+                     "值表达式": m.group(1)[:160]})
+
     # WebSocket / SSE / GraphQL 操作名（产出承诺必须有提取通道）
     for m in re.finditer(r'new\s+WebSocket\s*\(([^)]{2,200})\)', text):
         toks = _tokenize_value(m.group(1))
@@ -945,7 +971,7 @@ def main():
     # （裸 fetch 盲区就是 eval 抓出来的：修复前该直方图里 fetch 恒 0 而无人看见）
     chans = [("url", "url形态"), ("hidden", "hidden形态"), ("concat", "concat形态"),
              ("json", "json形态"), ("css", "css形态"), ("html", "html形态"),
-             ("fetch", "fetch形态"), ("call", "call形态"), ("ws/wss", "ws形态"),
+             ("fetch", "fetch形态"), ("call", "call形态"), ("tpl", "tpl形态"), ("ws/wss", "ws形态"),
              ("sse", "sse形态"), ("graphql", "graphql形态"), ("absolute", "绝对URL")]
     L.append("通道直方图（零也是信号，勿略过）：" +
              " · ".join("%s %d" % (n, stats.get(k, 0)) for n, k in chans))

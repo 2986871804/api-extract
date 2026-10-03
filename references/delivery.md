@@ -54,7 +54,7 @@
 | 形态 | 来源列 |
 |---|---|
 | `html` | 页面引用 |
-| `url / concat / json / css / fetch / call / ws / sse / wss-url / graphql-op / absolute` | JS提取（方法列自带 WSS/SSE 标记，absolute 自带域外标注（= 第三方域/兄弟域，词形按硬性规则 6）） |
+| `url / tpl / concat / json / css / fetch / call / ws / sse / wss-url / graphql-op / absolute` | JS提取（方法列自带 WSS/SSE 标记，absolute 自带域外标注（= 第三方域/兄弟域，词形按硬性规则 6）） |
 | `hidden:<变量名>` 前缀形态 | JS提取（hidden 系按前缀匹配，仍是写死规则） |
 | apk/ipa 静态提取 | 移动端提取 |
 
