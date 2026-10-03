@@ -23,7 +23,8 @@ import sys
 from collections import defaultdict
 
 from extract_endpoints import (TEXT_EXTS, API_PREFIX, load_fetch_exclusions,
-                               FETCH_REPORT, find_fetch_reports, hdr_bad)  # 扫描面/前缀/判定联动同源
+                               FETCH_REPORT, find_fetch_reports, hdr_bad,
+                               is_binary_file)  # 扫描面/前缀/判定联动/二进制嗅探同源
 
 ASSET_RE = re.compile(r'\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|mp4|json|html?|map|vue)(\?|$)', re.I)
 STR_RE = re.compile(r'(["\'`])(/[^"\'`]{2,200})\1')
@@ -74,6 +75,9 @@ def render(base, reconcile_fine=None):
                 skipped_ext += 1
                 continue
             if not os.path.isfile(path):
+                continue
+            if is_binary_file(path):              # 与精提同一判定——单侧跳会造成对账假盲区候选
+                skipped_ext += 1
                 continue
             try:
                 text = open(path, encoding='utf-8', errors='ignore').read()

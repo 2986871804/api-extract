@@ -28,7 +28,8 @@ import re
 import sys
 
 from extract_endpoints import (TEXT_EXTS, API_PREFIX, load_fetch_exclusions,
-                               FETCH_REPORT, find_fetch_reports, hdr_bad)
+                               FETCH_REPORT, find_fetch_reports, hdr_bad,
+                               is_binary_file)
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -96,6 +97,9 @@ def ip_confidence(val, blk):
 
 
 def scan_file(path, hits, stats, seen_blocks):
+    if is_binary_file(path):          # 与提取两侧同一判定（前 8KB 含 NUL 即非文本）
+        stats["二进制跳过"] += 1
+        return
     try:
         text = open(path, encoding="utf-8", errors="ignore").read()
     except OSError:

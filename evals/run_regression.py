@@ -124,6 +124,8 @@ w(js, (
     'axios.get("https://cdn.other.net/v9/abs/call");\n'
     'var statUrl = "https://api.demo.local/api/v2/stats/hidden";\n'
     'var dupWsUrl = "wss://dup.io/ws";\n'
+    'new WebSocket("wss://dup2.io/rt");\n'
+    'new EventSource("https://cdn.other.net/v9/sse/stream");\n'
 ))
 import collections                                                    # noqa: E402
 consts = ee.build_consts([js])
@@ -171,6 +173,15 @@ chk("C22 hidden 绝对 URL 拆基址+域外标注", _hs is not None and "另行�
 chk("C23 协议 URL 不再产折叠垃圾行（hidden 的 wss 值去重给 wss-url 通道）",
     not any(r["接口路径"].startswith(("/wss:/", "/https:/", "/http:/")) for r in recs)
     and ("wss://dup.io/ws", "", "WSS", "wss-url") in idx)
+chk("C24 ws 构造器字面量去重给 wss-url（v2.32 漏掉的同类分支）",
+    not any(r["接口路径"] == "/wss:/dup2.io/rt" for r in recs)
+    and ("wss://dup2.io/rt", "", "WSS", "wss-url") in idx)
+chk("C25 sse 绝对 URL 拆基址", ("/v9/sse/stream", "https://cdn.other.net", "SSE", "absolute") in idx)
+binf = os.path.join(tmp, "packed.bin.js")
+w(binf, "PK\x03\x04" + "\x00" * 200 + 'fetch("/api/bin/leak");')
+bstats = collections.Counter()
+brecs, _, _, _ = ee.extract_file(binf, stats=bstats)
+chk("C26 二进制嗅探：前 8KB 含 NUL 即跳过，不产垃圾端点", not brecs and bstats.get("二进制跳过") == 1)
 jf = os.path.join(tmp, "zh-CN.json")
 w(jf, '{"menu":{"export":"api/i18n/export"}}')
 jrecs, _, _, _ = ee.extract_file(jf)

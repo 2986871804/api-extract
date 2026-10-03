@@ -464,6 +464,17 @@ def _absolute_split(raw):
     return None
 
 
+def is_binary_file(path):
+    """git 式判定：前 8KB 含 NUL 字节即按非文本处理。损坏/伪装成 .js 的二进制在
+    errors="replace" 解码下永远"成功"，旧版照扫并从垃圾内容产出假端点（汇总还报「跳过非文本 0 个」）。
+    粗筛/精提/注释扫描三侧共用同一判定——只有一侧跳会造成对账假盲区候选。"""
+    try:
+        with open(path, "rb") as f:
+            return b"\x00" in f.read(8192)
+    except OSError:
+        return False
+
+
 # ---------------------------------------------------------------- 主提取
 
 def extract_file(path, hidden=False, stats=None, consts=None):
@@ -472,6 +483,9 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         stats = collections.Counter()
     consts = consts or {}
     try:
+        if is_binary_file(path):
+            stats["二进制跳过"] += 1
+            return [], 0, 0, ""
         text = open(path, encoding="utf-8", errors="replace").read()
     except Exception as e:
         return [], 0, 0, "READ_ERR %r" % e
@@ -756,6 +770,24 @@ def extract_file(path, hidden=False, stats=None, consts=None):
     for m in re.finditer(r'new\s+WebSocket\s*\(([^)]{2,200})\)', text):
         toks = _tokenize_value(m.group(1))
         raw, has_ph = rebuild_path(toks)
+        # 字面量 wss:// 由 wss-url 通道收（防 /wss:/… 折叠垃圾行 + 同地址两行）；http(s) 走绝对拆分
+        if raw.startswith(("ws://", "wss://")):
+            stats["ws去重"] += 1
+            continue
+        if raw.startswith(("http://", "https://")):
+            absr = _absolute_split(raw)
+            if absr:
+                stats["绝对URL"] += 1
+                recs.append({"接口路径": absr[1], "基路径": absr[0],
+                             "请求方式": "WSS", "形态": "absolute",
+                             "含占位符": "是" if has_ph else "否",
+                             "query": "", "参数名": "",
+                             "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
+                             "来源文件": os.path.basename(path),
+                             "值表达式": m.group(1)[:160]})
+            else:
+                stats["非接口剔除"] += 1
+            continue
         p, q, _ = normalize(raw)
         p, bres, _sus = resolve_prefix(p, "", consts)
         if p and p != "/":
@@ -768,6 +800,23 @@ def extract_file(path, hidden=False, stats=None, consts=None):
     for m in re.finditer(r'new\s+EventSource\s*\(([^)]{2,200})\)', text):
         toks = _tokenize_value(m.group(1))
         raw, has_ph = rebuild_path(toks)
+        if raw.startswith(("ws://", "wss://")):        # EventSource 取 wss 无意义，去重给 wss-url 通道
+            stats["sse去重"] += 1
+            continue
+        if raw.startswith(("http://", "https://")):    # SSE 流挂在绝对 http(s) 地址是常态
+            absr = _absolute_split(raw)
+            if absr:
+                stats["绝对URL"] += 1
+                recs.append({"接口路径": absr[1], "基路径": absr[0],
+                             "请求方式": "SSE", "形态": "absolute",
+                             "含占位符": "是" if has_ph else "否",
+                             "query": "", "参数名": "",
+                             "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
+                             "来源文件": os.path.basename(path),
+                             "值表达式": m.group(1)[:160]})
+            else:
+                stats["非接口剔除"] += 1
+            continue
         p, q, _ = normalize(raw)
         p, bres, _sus = resolve_prefix(p, "", consts)
         if p and p != "/":
@@ -866,7 +915,7 @@ def main():
     L = []
     L.append("=== 提取汇总 ===")
     L.append("扫描文本文件 %d 个（跳过非文本 %d 个）｜`url:` 出现 %d 次｜成功入对象 %d 次｜去重后接口 %d 条（其中含占位符 %d 条、hidden 形态 %d 条）"
-             % (len(set(files)), skipped_ext, tot_url, tot_hit, len(dedup),
+             % (len(set(files)), skipped_ext + stats.get("二进制跳过", 0), tot_url, tot_hit, len(dedup),
                 sum(1 for d in dedup.values() if d["含占位符"] == "是"),
                 sum(1 for d in dedup.values() if d["形态"].startswith("hidden"))))
     if args.site == "-":
