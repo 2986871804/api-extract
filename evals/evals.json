@@ -1,0 +1,43 @@
+{
+  "skill_name": "api-extract",
+  "evals": [
+    {
+      "id": 0,
+      "name": "local-js-extract",
+      "prompt": "我在做已获书面授权的渗透测试（目标客户 demo-app.cn，性质：只读信息收集）。这是从该站点前端下载的静态资源目录，已放在本地：C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\frontend-dump。请提取其中全部 API 接口，并挖掘硬编码密钥、内网地址、注释里的敏感信息等泄露点，产出：接口清单 CSV、泄露/线索 CSV、以及一份简短的发现简报（Markdown）。本次全程离线分析，不要向任何外部主机发起网络请求。",
+      "expected_output": "接口清单覆盖 app.js（axios/fetch 调用、动态拼接）、page.vue（$http 调用）、lang.json（i18n 值）、index.html（路由）、style.css（url()）、vendor.min.js（concat/模板串/WebSocket/SSE）中的接口；泄露点含阿里云风格 AK/SK、JWT、内网 IP（192.168.31.45 / 10.20.0.8 / 192.168.1.100）、DB 连接串、注释凭据 Admin@123；第三方/兄弟域名接口被标注需另行授权而非混入同源接口；vendor.min.js license 横幅内的 sample_key 不被误报为泄露。",
+      "files": [
+        "C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\frontend-dump"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "mock-site-verify",
+      "prompt": "已获书面授权的渗透测试（只读），目标为本机模拟站点。第一步：在后台启动模拟服务并保持运行：python C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\mock_site_server.py --port 8765 --log <outputs>\\server_requests.log（监听 127.0.0.1:8765）。第二步：对 http://127.0.0.1:8765 做前端接口提取与只读验证——下载前端资源、提取 API 接口、批量确认哪些接口无需 token 即可访问、哪些需要鉴权。产出：接口清单 CSV（含每条的存在性与鉴权判定）+ 测绘简报 Markdown。硬约束：只允许 GET/HEAD/OPTIONS；结束前确认 server_requests.log 已保存。",
+      "expected_output": "从首页 HTML 找到 /static/app.js 并下载，提取出 /api/public/info、/api/user/profile、/api/admin/user/list、/api/user/logout（POST 只记录不发）、/api/order/export；验证结论正确：/api/public/info 与 /api/order/export 未鉴权可读，/api/user/profile 需凭据（401），/api/admin/user/list 需凭据/禁止（403）；提取覆盖 jQuery 裸 $ 调用点（$.get）的 /label/ajax/areaPath.aspx 且验证为未鉴权可读；多页站路径覆盖 /news/list.aspx（含内联 $.get 的 /Ajax/AjaxData.ashx，未鉴权可读）；白名单探测覆盖 /actuator/health；server_requests.log 中无 GET/HEAD/OPTIONS 以外的方法。",
+      "files": [
+        "C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\mock_site_server.py"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "sites-csv-alive",
+      "prompt": "已获书面授权的渗透测试（本机模拟环境，只读）。站点清单：C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\eval2-<run>\\sites.csv，共 3 行。其中「客户站点A」由本地脚本模拟——先在后台启动并保持运行：python C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\mini_server.py --port <alive-port> --log <outputs>\\mini_server_requests.log；「客户站点B」服务已下线；「客户站点C」域名已注销。请按清单逐站确认存活状态，对存活站点做接口提取与敏感信息挖掘，产出：逐站状态的站点/接口清单 CSV + 简报 Markdown。硬约束：只允许 GET/HEAD/OPTIONS。",
+      "expected_output": "三个站点行全部出现在产物中（无静默丢弃）；站点A 判定存活并提取出 /api/v1/notice/list、/api/v1/banner、/api/v1/admin/config；站点B（连接拒绝）与站点C（DNS 解析失败）判定非存活且不进入提取/验证；mini_server_requests.log 中无 GET/HEAD/OPTIONS 以外的方法。",
+      "files": [
+        "C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\eval2-with_skill\\sites.csv",
+        "C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\eval2-without_skill\\sites.csv",
+        "C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\mini_server.py"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "alias-template-extract",
+      "prompt": "我在做已获书面授权的渗透测试（目标客户 demo-app.cn，性质：只读信息收集）。这是该站点前端构建产物目录，已放在本地：C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\eval3-alias-template。请提取其中全部 API 接口，并挖掘硬编码密钥、内网地址、注释里的敏感信息等泄露点，产出：接口清单 CSV、泄露/线索 CSV、以及一份简短的发现简报（Markdown）。本次全程离线分析，不要向任何外部主机发起网络请求。",
+      "expected_output": "v2.35 盲区压力测试：别名实例相对路径（api.get(\"user/login\") 等）、裸模板串赋值、跨段拼接（/api/v3/order/+oid+/detail）、jQuery $.get 各通道按「诚实边界」处理——要么入清单且如实标注，要么在报告显式披露，不得静默丢失；标准通道（fetch、http 调用点、service+斜杠路径）正常命中；license 横幅 sample_key 不误报；执行两层回归校验（run_regression + run_scenario）。",
+      "files": [
+        "C:\\Users\\<user>\\Desktop\\pentest-skills-github\\api-extract-workspace\\inputs\\eval3-alias-template"
+      ]
+    }
+  ]
+}

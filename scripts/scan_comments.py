@@ -27,7 +27,8 @@ import os
 import re
 import sys
 
-from extract_endpoints import (TEXT_EXTS, API_PREFIX, load_fetch_exclusions,
+from extract_endpoints import (TEXT_EXTS, SERVER_PAGE_EXTS, API_PREFIX,
+                               load_fetch_exclusions,
                                FETCH_REPORT, find_fetch_reports, hdr_bad,
                                is_binary_file)
 
@@ -61,13 +62,25 @@ OLD_API   = re.compile(r'(?<![\w/])/' + API_PREFIX + r'/[A-Za-z0-9_\-/]{2,120}')
 
 def comments_of(path, text):
     """按文件类型切注释块，返回 [(起始偏移, 块文本)]。
-    含内容嗅探：.js 形态的 HTML 错误页（重定向落盘等）按 HTML 注释扫，与精提同口径。"""
+    含内容嗅探：.js 形态的 HTML 错误页（重定向落盘等）按 HTML 注释扫，与精提同口径；
+    服务端页面族（.aspx/.jsp/.php…，v2.40 起）双扫——HTML 注释 + <%-- --%> 服务端注释
+    + 内嵌 <script> 区的 JS 注释（同 .vue 的双区处理）——只走 HTML 注释会漏内嵌脚本
+    注释，只走 JS 注释会把整页 HTML 交给 // 切分。"""
     low = path.lower()
     if low.endswith((".json", ".map")):
         return []                                   # JSON 家族无注释语法
-    head = text[:256].lstrip().lower()
-    if low.endswith((".html", ".htm")) or head.startswith(("<!doctype html", "<html", "<head")):
+    head = text[:512].lstrip().lower()
+    if low.endswith((".html", ".htm") + SERVER_PAGE_EXTS) \
+            or head.startswith(("<!doctype html", "<html", "<head")) \
+            or (head.startswith(("<%", "<?")) and "<html" in head):
         out = [(m.start(), m.group(0)) for m in HTML_CMT.finditer(text)]
+        # WebForms/JSP 服务端注释 <%-- --%>（HTML 注释语法盖不住的另一种块注释）
+        out += [(m.start(), m.group(0)) for m in re.finditer(r'<%--[\s\S]*?--%>', text)]
+        # 内嵌 <script> 区按 JS 注释扫（.vue 双区同款；服务端页面几乎必带内联脚本）
+        for sm in re.finditer(r"<script[^>]*>([\s\S]*?)</script>", text):
+            seg, base = sm.group(1), sm.start(1)
+            out += [(base + m.start(), m.group(0)) for m in JS_BLOCK.finditer(seg)]
+            out += [(base + m.start(), m.group(0)) for m in JS_LINE.finditer(seg)]
     elif low.endswith(".vue"):
         # Vue SFC：模板区 HTML 注释 + 脚本区 JS 注释。JS 正则只作用于 <script> 区间——
         # 模板属性里的 //（协议相对 URL）会被 JS_LINE 当行注释切出假线索块（实测误报）

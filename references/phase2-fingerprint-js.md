@@ -10,7 +10,7 @@
 |---|---|
 | 响应头 | `Server: nginx/1.18`、`X-Powered-By: PHP/7.4`、`X-Generator` |
 | Cookie 名 | PHPSESSID(PHP)、JSESSIONID(Java)、_rails_session(Rails)、rememberMe(Shiro) |
-| HTML | 注释里的版本号、`<meta name="generator" content="WordPress 6.2">` |
+| HTML | 注释里的版本号、`<meta name="generator" content="WordPress 6.2">`、建站系统横幅（`Powered by ezEIP/Copyright © …` 类） | 横幅**直接对响应原文 grep**（`<!--`…`-->` 与 `<%--`…`--%>`）——scan_comments 的 license 抑制会把含 Copyright 的横幅整块滤除（线索侧设计如此），指纹侧借道它的产物会漏版本（真目标实测：ezEIP 5.3.0 版本横幅靠 MITM 复盘才补上） |
 | JS 资源路径 | `/static/js/chunk-vendors.*.js`(Vue CLI)、`angular.min.js`；sourcemap 存在 = 开发配置残留 |
 | 报错页 | Spring Boot JSON 错误体、Tomcat 堆栈、框架原生 404 体 |
 | 缓存层头 | `Via: 1.1 varnish`、`X-Cache: Hit from cloudfront`、`Cf-Cache-Status`、`Age` |
@@ -34,6 +34,7 @@
 | PaloAlto | `/global-protect/` | |
 | vCenter | `/vsphere-client/` | |
 | Exchange | `/owa/`、`/ecp/` | |
+| 国产建站 CMS（**按指纹选行**，2026-10 实测驱动新增：ezEIP 5.0 真目标暴露的能力空白） | ezEIP（万户系）：`/system/Login.aspx`、`/checkcode.ashx`；帝国 CMS：`/e/admin/`、`/eadmin/admin/`（8.0+ 改目录） | 识别特征先命中才探：ezEIP = X-Powered-By 含 ezEIP/ASP.NET + 500 错误页框架签名 + 页面 .aspx/.ashx 形态（checkcode.ashx 在即家族旁证）；帝国 = 路径形态 `/e/` 前缀。后台/登录页只记存在性不登录；本技能不做漏洞比对，命中价值 = 解释响应特征 + 圈定业务 AJAX 目录线索（ezEIP 系常集中 `label/ajax/*.aspx`——交给提取侧，不是探测路径） |
 
 Actuator 端点优先级（只读取证，不利用）：
 
@@ -46,11 +47,11 @@ Actuator 端点优先级（只读取证，不利用）：
 /actuator/gateway/routes   记录存在即可
 ```
 
-### §1.2 敏感路径探测表（每项 1 发 GET；预算与节奏数值见 SKILL.md「速率与预算总表」）<!-- 最后核验 2026-09，核验源=同类探测路径清单仓库（probes-and-wordlists 等）与 HackTricks 的 diff；路径表只加不减，核验重点是"新框架要不要加"而非删旧。 -->
+### §1.2 敏感路径探测表（每项 1 发 GET；预算与节奏数值见 SKILL.md「速率与预算总表」）<!-- 最后核验 2026-10，核验源=同类探测路径清单仓库（probes-and-wordlists 等）与 HackTricks 的 diff + 国产 CMS 公开披露（DedeCMS ver.txt / 帝国后台目录）；路径表只加不减，核验重点是"新框架要不要加"而非删旧。2026-10 实测驱动：真目标 ezEIP 5.0 暴露国产建站系统断档，§1.1 与本表各补行。 -->
 
 **探测顺序**（§1.1–§1.4 即 SKILL.md 所称「白名单探测」的路径清单；§1.1–§1.3 合计路径数超预算一倍，按此优先级花预算，超即停）：① catch-all 基线 1 发（§1.4）→ ② robots.txt / sitemap.xml → ③ §1.3 API 文档族（命中即高价值）→ ④ 按已命中指纹选 §1.1 矩阵对应行（Java 栈才探 Java 行，不盲扫全表）→ ⑤ §1.2 其余按余量。未探测路径记入未闭环清单（信息缺口）。
 
-**探测响应处置**：白名单探测每发响应头+正文落盘（阶段 3「探测响应复用」的证据前提），文件名 = 探测路径去前导斜杠、`/` 转 `_`（同站撞名加序号后缀）；探测得响应的路径**当场写入**入口清单（来源=PROBE，不留到收尾），已得响应的条目按「复用响应、不重发」处理（规则见 phase3「选候选」的探测响应复用）。
+**探测响应处置**：白名单探测用 `scripts/probe_verify.py --mode probe` 执行——间隔/额度/catch-all 基线/落盘命名全部机械化（手搓 curl 循环是实测事故源：状态行从响应文本 grep 会把 Date 里的年份当状态码）。每发响应头+正文落盘（阶段 3「探测响应复用」的证据前提），文件名 = 探测路径去前导斜杠、`/` 转 `_`（点开头路径折 `_dot_` 前缀——否则落盘成隐藏文件、证据被数漏；同站撞名加 `__2` 序号）**+ `.body`/`.headers` 后缀**——`.body` 后缀与 `mine_responses.py` 的扫描口径对齐，阶段 3 对 `<站点>/probe/` 直接再跑响应体挖掘（无此后缀时这批响应对挖掘脚本不可见）；探测得响应的路径**当场写入**入口清单（来源=PROBE，不留到收尾），已得响应的条目按「复用响应、不重发」处理（规则见 phase3「选候选」的探测响应复用）。
 
 ```
 版本控制/备份： /.git/HEAD  /.git/config  /.svn/entries  /.DS_Store
@@ -60,6 +61,7 @@ Actuator 端点优先级（只读取证，不利用）：
               /Dockerfile  /docker-compose.yml  /Procfile  /web.config  /.htaccess  /nginx.conf
 CMS 专项：     /wp-config.php.bak  /wp-content/debug.log  /wp-json/wp/v2/users（用户枚举）
               /CHANGELOG.txt（Drupal 版本）  /readme.html
+              /data/admin/ver.txt（DedeCMS 版本时间戳，对照版本发布时间定版本——2026-10 实测驱动新增）
 管理/调试：    /pma  /_phpmyadmin  /server-status  /server-info  /phpinfo.php  /debug/
 策略/元信息：  /crossdomain.xml  /.well-known/security.txt（组织信息/邮箱）
               （robots.txt / sitemap.xml 已列探测顺序②——Disallow 值=专属路径清单、全 URL 列表）
@@ -123,7 +125,8 @@ API 文档：     见 §1.3
 大 JS 文件可能只下载一部分：HTTP 200、退出码 0，工具不报错。基于残缺文件的提取会漏接口。
 
 - 用 `scripts/safe_fetch.py`：`python scripts/safe_fetch.py --base https://<host> --urls urls.txt --out ./dl --retry 6 --gap 2`（`--retry`/`--gap` 数值以 SKILL.md「速率与预算总表」为准；`--gap` 脚本默认 1 秒不满足，必须显式传；走代理加 `--proxy http://127.0.0.1:8080`）
-- **单域名/URL 冷启动**（无现成 urls.txt 时）：首页 URL（`https://<域名>/`）写入 urls.txt → 按上一条 safe_fetch 拉取（授权类别 ①）→ 对落盘 HTML 跑 `extract_endpoints.py`（html 通道吃 href/src）→ 命中的 JS/CSS/manifest 地址追加 urls.txt 第二轮拉取 → 再走下方二跳补抓。
+- **单域名/URL 冷启动**（无现成 urls.txt 时）：首页 URL（`https://<域名>/`）写入 urls.txt → 按上一条 safe_fetch 拉取（授权类别 ①）→ 对落盘 HTML **grep `src=`/`href=`** 收集 JS/CSS/manifest 地址追加 urls.txt 第二轮拉取 → 再走下方二跳补抓。（v2.40 勘误：extract_endpoints 的 html 通道**按设计剔除静态资产**——只产页面路由与接口面，JS/CSS 收割不归它管，此前文档指向它是错位；拿 `grep -oE '(src|href)="[^"]+"'` 或等价方式收资产清单。）
+- **同域页面补爬（多页站必做）**：冷启动 + 二跳补抓只覆盖**首页**引用的资源——WebForms/传统企业站（ezEIP 这类建站系统）的业务 JS 分散在各子页面，首页一轮后通道直方图 html 形态仍高、而 JS 通道低产时，对 html 通道产出的**同域页面路由**（含二跳后新发现页）按「速率与预算总表·同域页面补爬」行拉取：safe_fetch 同参数（① 类、`--gap 2`）、饱和即停（连续 3 页零新增 JS 引用）→ 每页照常进提取管线，其引用的 JS 追加 urls.txt。只爬同域（硬性规则 6——第三方域/兄弟域链接只记录）；页面本身进 `<站点>/dl/`，对它跑提取时 html 通道继续产出新路由——补爬与提取形成回路，预算与饱和条件防跑飞。落盘的服务端页面（.aspx/.ashx/.jsp/.php）照常进提取（v2.40 起在扫描面内——此前被当非文本整页跳过，页面内联 AJAX 全漏）。
 - 判据一条：**实收字节数 == 响应头 Content-Length**。不符重抓。chunked 传输（无 CL）→ 判定 CHUNKED：**可用于提取**、产物标注"不可校验"，不进重试（重试也长不出 CL）。
 - 经验阈值：>700KB 的文件重点盯。
 - 残缺的隐蔽症状：webpack 产物里出现"被引用但找不到定义"的模块 id——第一反应是文件没下全，不是"存在隐藏模块"。
@@ -132,7 +135,7 @@ API 文档：     见 §1.3
 - **二跳补抓（必做）**：对已下载文件 grep 引用的 `*.json`（i18n 语言包）、`*.css`（webpack CSS chunk）、懒加载 chunk 名（`import(` / webpackChunk），追加进 urls.txt 第二轮拉取（追加前按硬性规则 6 过滤 host——第三方域的文件只记录 URL、不下载）——三者**都不从首页引用**，不主动拉永远拿不到；语言包高频藏接口名与权限词（passwordlessLogin / export / permission），是免鉴权候选的天然字典。
   - .css 为何单独提：`--dir` 扫描范围已含 .css，但只扫已落盘文件——不进二跳清单，CSS chunk 永远不会被拉到本地。
   - 重跑幂等（阴性结论，三连跑实测）：追加 URL 重跑安全——同 URL 重抓原地覆盖、历史判定保留、撞名自动改名并告警，判定文件/文件数不翻倍（机制见 safe_fetch docstring）。
-- **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map 十二类文本（三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
+- **扫描范围与跳过计数**：`extract_endpoints.py --dir` 递归吃 js / mjs / cjs / ts / tsx / jsx / vue / json / html / htm / css / map **+ aspx / ashx / asmx / asp / jsp / php** 十八类文本（服务端页面族 v2.40 补入——多页站补爬落盘的 .aspx 曾被当非文本整页跳过、内联 AJAX 全漏；三个提取/扫描脚本均为递归 walk）；非文本文件计入"跳过 N 个"汇总——**无静默丢弃**（实测教训：只吃 .js 时 zh-CN.json 里 3 条接口被无声跳过）。
 - **下载判定联动（机械执行）**，四个要点：
   - ① 非 OK 且非 CHUNKED 的文件不进入提取，排除计数入汇总（准入处置权威见 delivery §0）；
   - ② 4xx 错误页里的 href 是支持链接/跳转目标，只记「存在被拦」信号，不进入口清单；
@@ -176,7 +179,7 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 4. **不以 `/` 开头的接口路径是真实存在的**（`url:"face/batchImport"`），归一化补 `/`，不过滤。
 5. **隐藏接口第二遍**（`--hidden`）：上传组件的 `action:`、`uploadUrl = "..."` 等 **`:` 键与 `=` 赋值两种写法都收**（后者带语句边界与 ASI 续行启发）。这类变量承载的地址不经过 axios 封装，只扫 `url:` 必漏；变量声明与调用点分处两地，要配对反查。
 6. **交叉验证防噪声**：隐藏形态的命中若与已知接口零重合，先怀疑规则误抓（图表库/播放器内部字段），不急着入清单。
-7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列（脚本 CSV 列名，并入入口清单后对应「方法」列）、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中），通道直方图与粗筛/精提对账对其生效（用例见 evals C10-C19）。
+7. **框架调用点正则**（正则法补充）：Vue `(axios|this.\$http|fetch|request)\.[a-z]+\(['"]([^'"]+)`；Angular `this\.http\.[a-z]+[<(]\s*['"]([^'"]+)`；jQuery 裸 `$` `\$\.(get|post|ajax|getJSON)\(['"]([^'"]+)`——精提 形态=call 通道已实现（方法动词入「请求方式」列（脚本 CSV 列名，并入入口清单后对应「方法」列）、无前导斜杠归一化、噪声过滤同 hidden 通道、含 Angular 泛型 `get<T>(` 形态、**模板串首参与 `${id}` 插值→占位符还原**、`\b` 词边界拦前缀误命中；jQuery 分支动词限死四个 HTTP 动词、后顾断言拦 `a$`/`$$` 前缀噪声——`$` 是固定且极高频的对象名，与 `service.get` 类类别名实例不同、噪声可控，**不再归入诚实边界**）。**表达式首参同收**（fetch/call/jQuery 三通道一致，v2.39）：`$.get(_siteAppPath + "label/ajax/only.aspx?formid=" + id)` 这类标识符开头的拼接表达式整段进 tokenizer——标识符段打 `{占位符}`、静态后缀字面量保留；首段标识符是**大写常量**（`API_HOST` 类）照走规则 9 前缀回填，是**运行时变量**（小写、取值来自页面属性/运行时配置）则前缀占位符保留、基路径列给出静态后缀的可用路径、备注注明「基址为运行时变量不可静态解析」——基址属诚实边界，静态后缀不属；对象首参（`$.ajax({url:…})` 配置形态）归 `url:` 通道不双计，纯动态首参（`$.get(var)`）无静态段不猜。通道直方图与粗筛/精提对账对其生效（用例见 evals C10-C19、C28-C37）。
 8. **WebSocket / SSE / GraphQL 通道**：`new WebSocket(...)`、`new EventSource(...)` 的值表达式按占位符规则重建（方法列记 WSS / SSE）；`wss?://` 字面量记形态 wss-url；`operationName:` 记形态 graphql-op（配合 /graphql 端点用）。均有提取产出，不再只是规则承诺。
 9. **前缀常量回填**：`{API_HOST}` 类前缀占位符对照全文件常量表（`NAME = "https://..."` / `wss://`）自动回填基址并剥占位符；表里没有才标"需人工解析"。占位符在路径中段的不剥（防破坏路径）。
 10. **裸模板串通道**（形态=tpl）：无调用上下文的 `` `/api/v2/goods/${t.id}/comments` `` 裸模板串——fetch/call 首参各有通道、`url:` 键与 hidden 变量各有所属，裸值三闸都不碰（曾靠诚实边界+人工补录兜底，实测有随机性，故补通道）；只收含 `${` 插值的反引号字面量（无插值裸模板串由粗筛 STR 正则覆盖），插值走 tokenizer 还原占位符。
@@ -185,9 +188,9 @@ python scripts/extract_endpoints.py --dir <站点dl目录> --site <站点> --hid
 
 1. **通道直方图**：精提报告固定打印各通道命中数（**零也在场**）——某通道整库为 0 本身是信号（裸 fetch 盲区修复前 fetch 恒 0 而无人看见）。
 2. **粗筛/精提对账**：`extract_apis.py <目录> --reconcile-fine <精提CSV>`——粗筛抓到而精提漏掉的路径被点名（"盲区候选，人工复核前不得丢弃"）。粗筛分级 gradeA/B/C（C=路由/组件路径倾向）；对账仅覆盖 gradeA/B——gradeC 不进对账点名（人工兜底，是分级设计而非盲区）。两侧同口径排除非 OK 下载文件（报告 + 侧车，见 §2 判定联动）——被排除文件不进入任何一侧的桶，不会制造假盲区候选（阴性结论，排除场景实测 0 条假候选）。
-3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端写法时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道。同类已知盲区：**axios 别名实例**——`const client = axios.create(); client.get("...")` 调用点不点名 axios/$http/request，粗筛与精提（规则 7）都看不见、对账也不响（双漏无 diff 可点）；补偿 = 运行时钩子路线（§4）。
+3. **诚实边界（Class B）**：语义级拼装（分段/Base64/动态计算路径）任何探测器都不可见——这是三道闸（粗筛→精提→人工）+ evals 存在的理由，不是缺陷而是边界；新增前端写法时优先靠 eval 新用例驱动补通道，再靠直方图与对账守护已补的通道（jQuery 裸 `$` 即此路径补入：实测 5 条 `label/ajax/*.aspx` 端点三闸全漏，先补通道再补 eval 用例）。同类已知盲区：**axios 别名实例**——`const client = axios.create(); client.get("...")` 调用点不点名 axios/$http/request，粗筛与精提（规则 7）都看不见、对账也不响（双漏无 diff 可点）；补偿 = 运行时钩子路线（§4）。
 
-**参数名来源（入口清单「参数」列的三个来源，不再手填）**：① `extract_endpoints.py` CSV 的 `参数名` 列（url 容器对象里 `params:{...}`/`data:{...}` 的键名）与 `query` 列（URL 字面量查询串）；② 归档 URL 查询串（§2.5）；③ 语言包/配置里的权限词仅作候选排序线索，不当参数。路径占位符（`{id}`）在路径列，不与参数混。
+**参数名来源（入口清单「参数」列的三个来源，不再手填）**：① `extract_endpoints.py` CSV 的 `参数名` 列——url 容器对象里 `params:{...}`/`data:{...}` 的键名，**及调用第二参对象键**（`$.post(url,{pageIndex:p,…})` / axios 配置实参——真目标实测反判事故的机械化防线：分页真名只在 `$.post` 第二参里，人眼读漏就差分错名、可枚举接口被误判安全）与 `query` 列（URL 字面量查询串）；② 归档 URL 查询串（§2.5）；③ 语言包/配置里的权限词仅作候选排序线索，不当参数。路径占位符（`{id}`）在路径列，不与参数混。
 
 ## §4 接口提取：运行时路线（有浏览器时）
 
@@ -264,7 +267,7 @@ python scripts/scan_comments.py --dir <文本目录> --csv clues.csv
 - **独立产物线**：产出 `注释线索清单`，**不并入泄露点清单**——线索 ≠ 已确认泄露，核验（定义见 delivery §1.5）后才升级。混淆会污染定级。
 - **内网 IP 二道判据（置信列）**：形状命中后看语境——伴随 内网/网关/直连/端口/URL/服务器 等线索词 ⇒ 高置信；版本号/UA/时间戳语境 ⇒ 低置信；同值多语境出现置信只升不降。核验按高置信优先。
 - license 抑制内置：`@license / Copyright / Licensed under` 横幅整块滤除，重复横幅合并计数，不刷屏。
-- 文件覆盖：js/ts/css 家族（`//` 与 `/* */`）、HTML（`<!-- -->`）、**.vue 双区**（模板 HTML 注释 + 脚本 JS 注释都扫）；JSON/.map 无注释语法，跳过并计数；行号+上下文随线索给出。
+- 文件覆盖：js/ts/css 家族（`//` 与 `/* */`）、HTML（`<!-- -->`）、**服务端页面族双区**（`.aspx/.jsp/.php` 等：HTML 注释 + `<%-- --%>` 服务端注释 + 内嵌 `<script>` JS 注释，v2.40 起进扫描面）、**.vue 双区**（模板 HTML 注释 + 脚本 JS 注释都扫）；JSON/.map 无注释语法，跳过并计数；行号+上下文随线索给出。
 - **证据本体规格**：上下文只来自所属注释块（不跨块、license 等已滤块不得倒灌），换行以 `⏎` 显式标记——上下文、行号、块内容三者必须互相印证，不得把多行伪装成一行。
 - 阴性也要报："注释 0 命中"是有效结论（历史上验证过整站注释无隐藏接口）。
 

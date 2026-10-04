@@ -18,11 +18,14 @@ extract_endpoints.py —— SPA 前端接口提取器的【参考实现】（技
   3. 🔴 无前导斜杠的值（url:"face/batchImport"）→ 归一化补 "/"，**不许 startswith("/") 过滤掉**。
   4. --hidden：隐藏形态扫描（el-upload 的 action:、componentsUrl/uploadUrl/downUrl 等
      data 变量承载的地址），结果单独标 形态=hidden:<变量名>，供人工确认。
+  5. jQuery 裸 $ 调用点（$.get/$.post/$.getJSON/$.ajax 首参字面量，形态=call）——
+     国内 WebForms/建站系统站的业务 AJAX 主流写法（实测驱动：label/ajax/*.aspx 三闸全漏）。
 
 用法：
   python extract_endpoints.py --dir <文本目录> --out report.txt --csv out.csv
-  # 目录递归扫 js/mjs/cjs/ts/tsx/jsx/vue/json/html/htm/css/map（语言包里的接口不再被无声跳过）
-  python extract_endpoints.py --files a.js b.js --csv out.csv
+  # 目录递归扫 js/mjs/cjs/ts/tsx/jsx/vue/json/html/htm/css/map + aspx/ashx/asmx/asp/jsp/php
+  # （语言包里的接口、服务端页面里的内联 AJAX 不再被无声跳过）
+  python extract_endpoints.py --files a.js b.aspx --csv out.csv
   python extract_endpoints.py --dir <js目录> --hidden --csv out.csv
 
 退出码：0 = 正常；1 = 判定报告损坏（结果未经过滤）——链式调用据此机械检测降级
@@ -40,11 +43,16 @@ URL_KEY   = re.compile(r'(?<![A-Za-z_$])url\s*:')                       # 任意
 METHOD_RE = re.compile(r'method[s]?\s*:\s*"([^"]*)"')
 STR_LIT   = re.compile(r'"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\'')
 
-# 隐藏形态候选：任意以 Url/url/RL 结尾的标识符，或 el-upload 的 action。
+# 隐藏形态候选：任意以 Url/url/RL 结尾的标识符（前缀段可选——裸 url/Url 也是合法候选），
+# 或 el-upload 的 action；group 2 捕获分隔符，供「url: 冒号形态让位 URL_KEY 通道」判别。
 # 🔴 不能只匹配「name: "字面量"」—— 上传/导出接口常写成
 #    uploadDhFileUrl: "".concat(n["a"], "/dh/uploadDhFile")   ← 值是 concat 表达式
 #    所以发现候选后要复用 url 的取值逻辑把整段表达式取出来，再分词重建。
-HIDDEN_NAME = re.compile(r'\b([A-Za-z_$][\w$]*(?:[Uu]rl|RL)|action)\s*[:=]')
+# 🔴 前缀段不能写成必选字符类打头（旧版 [A-Za-z_$][\w$]*(?:[Uu]rl|RL)）：首字符被
+#    [A-Za-z_$] 吃掉后，后缀组要求再出现一个完整 url/RL——uploadUrl/imageUrl/URL 都中、
+#    恰裸 url/Url 全漏。真目标实测事故：var url = whir.site.getAppPath() +
+#    "label/ajax/formsubmit.aspx?formid=" + formid 整段零产出（evals #6）。
+HIDDEN_NAME = re.compile(r'\b((?:[A-Za-z_$][\w$]*)?(?:[Uu]rl|RL)|action)\s*([:=])')
 
 # 参数名提取：url 容器对象里的 params:{...} / data:{...} 键名（入清单「参数」列）
 PARAMS_RE = re.compile(r'\bparams\s*:\s*\{([^{}]{0,300})\}')
@@ -62,10 +70,19 @@ def param_keys(obj):
             seen.add(k); out.append(k)
     return ",".join(out[:12])
 
-# 扫描的文本扩展名：JS 家族 + JSON 语言包/配置 + HTML + CSS + sourcemap。
-# 只吃 .js 会无声丢掉语言包里的接口（实测：zh-CN.json 3 条接口被静默跳过）。
+# 服务端页面族：WebForms/JSP/PHP 传统多页站的页面与处理器。它们是 HTML（或内嵌 JS 的
+# HTML 片段），提取面与 .html 同规；内容嗅探（下方 html_form）须容忍 <%@ Page %>
+# / <?php 指令前缀——真目标实测：.aspx 几乎必以 <%@ 指令开头，startswith(doctype)
+# 嗅探对它恒假，href 面整页漏。
+SERVER_PAGE_EXTS = (".aspx", ".ashx", ".asmx", ".asp", ".jsp", ".php")
+
+# 扫描的文本扩展名：JS 家族 + JSON 语言包/配置 + HTML + CSS + sourcemap + 服务端页面族。
+# 只吃 .js 会无声丢掉语言包里的接口（实测：zh-CN.json 3 条接口被静默跳过）；
+# 服务端页面族是 v2.40 补的：多页站补爬落盘的 25 个 .aspx 页面曾被当"非文本"整页
+# 跳过、内联 AJAX（/Ajax/AjaxData.ashx）漏提——ezEIP 探测行 2026-10 就加了，
+# 提取器的扫描面没跟上（真目标实测事故）。
 TEXT_EXTS = (".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".vue",
-             ".json", ".html", ".htm", ".css", ".map")
+             ".json", ".html", ".htm", ".css", ".map") + SERVER_PAGE_EXTS
 
 # 通用 API 路径前缀（单一出处：extract_apis 粗筛 / scan_comments 旧接口扫描从此导入——
 # 三处各自为政会漂移，且单目标残留词（frame/useraccount/account）不该进通用默认值）
@@ -337,6 +354,103 @@ def value_expr(obj_text, key_pos, sep_pos=None):
     return obj_text[i:j].strip()
 
 
+def _first_arg_expr(text, i):
+    """从调用 '(' 之后的 i 起取首个参数表达式，返回 (表达式, 结束位)——结束位供
+    _second_arg_keys 提取第二参（$.post(url, {参数}) 的参数名）。
+    括号/字符串感知（嵌套调用、跨行拼接都吃得住），供 fetch/call/jQuery 三通道的
+    表达式首参（标识符 + "静态后缀" 拼接）整段进 tokenizer——真目标实测形态：
+    $.get(_siteAppPath + "label/ajax/only.aspx?formid=" + fid)，字面量首参版正则
+    对它恒 0 命中。空表达式返回 (None, i)。"""
+    n = len(text)
+    depth, instr, j = 0, None, i
+    while j < n:
+        c = text[j]
+        if instr:
+            if c == "\\":
+                j += 2; continue
+            if c == instr:
+                instr = None
+            j += 1; continue
+        if c in "\"'`":
+            instr = c
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                break                    # 调用右括号：首参结束
+            depth -= 1
+        elif c == "," and depth == 0:
+            break                        # 顶层逗号：首参结束，后续是配置/回调
+        j += 1
+    expr = text[i:j].strip()
+    return (expr or None, j)
+
+
+_CFG_KEYS = frozenset(("url", "type", "method", "headers", "timeout", "async",
+                       "contentType", "dataType", "processData", "traditional",
+                       "success", "error", "complete", "done", "fail", "then",
+                       "beforeSend", "xhrFields", "withCredentials", "cache",
+                       "responseType", "onUploadProgress", "signal", "body"))
+
+
+def _second_arg_keys(text, end):
+    """调用第二参对象字面量的参数名（入「参数名」列）。
+    真目标实测反判事故：分页差分用 page/rows 试探而真名是 pageIndex/pageSize/columnId
+    （只存在于页面 $.post 第二参），「参数被忽略」的假阴性差点把可枚举留资库标安全
+    ——参数名必须机械化读出，不靠人眼。收顶层键（jQuery 实参形态）与 params:{}/data:{}
+    子键（axios 配置形态）；常见配置键（success/type/headers…）跳过。第二参不是
+    对象字面量（回调/数组）返回空串，不猜。"""
+    n = len(text)
+    i = end
+    while i < n and text[i] in " \t\r\n":
+        i += 1
+    if i >= n or text[i] != ",":
+        return ""
+    i += 1
+    while i < n and text[i] in " \t\r\n":
+        i += 1
+    if i >= n or text[i] != "{":
+        return ""
+    depth, j, instr = 0, i, None
+    while j < n:
+        c = text[j]
+        if instr:
+            if c == "\\":
+                j += 2; continue
+            if c == instr:
+                instr = None
+            j += 1; continue
+        if c in "\"'`":
+            instr = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    obj = text[i:j + 1]
+    if len(obj) < 2:
+        return ""
+    keys = []
+    for item in _split_top(obj[1:-1]):
+        item = item.strip()
+        mm = re.match(r'(["\']?)([A-Za-z_$][\w$]*)\1\s*:', item)
+        if not mm:
+            continue
+        k = mm.group(2)
+        rest = item[mm.end():]
+        if k in ("params", "data"):
+            keys += [x[1] for x in re.findall(r'(["\']?)([A-Za-z_$][\w$]*)\1\s*:', rest)][:12]
+        elif k not in _CFG_KEYS:
+            keys.append(k)
+    seen, out = set(), []
+    for k in keys:
+        if k not in seen:
+            seen.add(k); out.append(k)
+    return ",".join(out[:12])
+
+
 # ---------------------------------------------------------------- 路径重建
 
 def _tokenize_value(expr):
@@ -501,9 +615,14 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         except Exception:
             pass    # 解析失败退回原文扫描（现状行为）
     # 内容嗅探（P3 防线）：.js 路径返回 HTML 错误页时按 HTML 形态处理，
-    # 扩展名与内容形态脱钩不再导致整页静默漏
-    head = text[:256].lstrip().lower()
-    html_form = low.endswith((".html", ".htm")) or head.startswith(("<!doctype html", "<html", "<head"))
+    # 扩展名与内容形态脱钩不再导致整页静默漏。服务端页面族按扩展名直判 HTML
+    # （.ashx 出 JSON 时 href 正则无命中、无害）；裸内容另容忍 <%@ Page %> /
+    # <?php 指令前缀——.aspx 几乎必带指令头，只认 startswith(doctype) 会整页漏
+    # href 面（真目标实测第二层：加了扩展名还是漏的那一层）。
+    head = text[:512].lstrip().lower()
+    html_form = (low.endswith((".html", ".htm") + SERVER_PAGE_EXTS)
+                 or head.startswith(("<!doctype html", "<html", "<head"))
+                 or (head.startswith(("<%", "<?")) and "<html" in head))
     recs = []
     url_total = len(URL_KEY.findall(text))
     hit = 0
@@ -559,7 +678,9 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                      "可疑": sus, "来源文件": rel, "值表达式": expr[:160]})
     if hidden:
         for m in HIDDEN_NAME.finditer(text):
-            name = m.group(1)
+            name, sep = m.group(1), m.group(2)
+            if name == "url" and sep == ":":
+                continue            # url: 冒号键归 URL_KEY 通道（url 形态），此处收会双计同一赋值
             expr = value_expr(text, m.start(), m.end())   # 传分隔符位：= 赋值形态从 = 后取值，不再借用他键
             if not expr:
                 continue
@@ -590,6 +711,12 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                     or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
                 stats["hidden噪声"] += 1
                 continue
+            if re.fullmatch(r"/\{[^}]*\}", p):
+                stats["纯动态路径"] += 1     # 纯占位符路径（data.url / self.options.fileIconUrl）：
+                continue                     # 无静态段拿不出可用接口——与 call/fetch 通道同规（evals #6 实测补齐）
+            if re.search(r"\$\d", p):
+                stats["hidden噪声"] += 1     # 正则替换碎片（url.replace(/…/g,'$1/…')）：
+                continue                     # $N 回引永远不是合法 URL 段
             p, bres, sus = resolve_prefix(p, sus, consts)
             stats["hidden形态"] += 1
             recs.append({"接口路径": p, "基路径": bres or base_of(p),
@@ -656,11 +783,20 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                          "可疑": "来自 JSON 值，需上下文确认", "来源文件": os.path.basename(path),
                          "值表达式": m.group(1)[:160]})
 
-    # CSS：url()/@import 引用（跳过 data URI、外链、带扩展名的静态资源）
+    # CSS：url()/@import 引用（跳过 data URI、外链、带扩展名的静态资源）。
+    # 两个真目标实测缺陷一并修（v2.40）：① @import url(/x) 形态里 import 分支先匹配、
+    # 把 "url(" 吞进值首（曾产 /url(/ok/import 垃圾行）——值先剥 url( 前缀；
+    # ② filter/behavior 等语法残片带出语句标点（/ant; 噪声行）——含 ; , { } = ( 或
+    # 无字母的值拒收。
     if path.lower().endswith((".css", ".map")):
         for m in re.finditer(r'(?:url|import)\s*\(?\s*[\'"]?([^\'")\s]{2,200})[\'"]?', text):
             u = m.group(1)
+            if u[:4].lower() == "url(":
+                u = u[4:]
             if u.startswith(("data:", "http", "//", "#")) or "." in u.rsplit("/", 1)[-1]:
+                continue
+            if re.search(r"[;,{}=()]", u) or not re.search(r"[A-Za-z]", u):
+                stats["css噪声"] += 1
                 continue
             stats["css形态"] += 1
             recs.append({"接口路径": u if u.startswith("/") else "/" + u,
@@ -671,9 +807,17 @@ def extract_file(path, hidden=False, stats=None, consts=None):
 
     # HTML：href/src/action 属性——引号与无引号形态都收（HTML5 无引号合法，整页无引号时
     # 带引号正则会 0 命中）；前导斜杠与相对路径都收，复用 normalize 归一化。
-    # 门控用内容嗅探（html_form）：.js 存成 HTML 错误页时也能走本分支
+    # 门控用内容嗅探（html_form）：.js 存成 HTML 错误页时也能走本分支。
+    # 正则锚定标签内 + 两道防误捕（真目标实测两轮迭代）：① <[a-zA-Z][^<>]* 锚标签——
+    # 宽松版会把内联脚本查询串里的 action=list 当标签属性捕成 /list 垃圾行；
+    # ② 锚定后必须用懒惰量词 + (?<![\w.]) 前置断言——贪婪 [^<>]* 回溯会落到标签内
+    # 最后一个属性位，onclick="this.src=…" 的 this.src 恰好满足 \bsrc=（. 与 s 之间
+    # 是词边界），把真 src="checkcode.ashx" 整个吞进 [^<>]*、只吐出 /this.src+ 垃圾行
+    # （真接口消失+垃圾残留双重损失）。懒惰量词取第一个属性位，(?<![\w.]) 拦住带
+    # 前缀点/标识符的伪属性，回溯自然落到真实属性上。
     if html_form:
-        for m in re.finditer(r'\b(?:href|src|action|data-url)\s*=\s*[\'"]?([^\'"\s>]{2,200})[\'"]?', text):
+        for m in re.finditer(
+                r'<[a-zA-Z][^<>]*?(?<![\w.])(?:href|src|action|data-url)\s*=\s*[\'"]?([^\'"\s>]{2,200})[\'"]?', text):
             raw = m.group(1).split("#")[0]
             if (not raw or raw.startswith(("data:", "http", "//", "javascript:",
                                            "mailto:", "tel:", "{", "<")) or " " in raw):
@@ -695,11 +839,17 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                          "来源文件": os.path.basename(path),
                          "值表达式": raw[:160]})
 
-    # 裸 fetch 首参字面量（.vue 高发）：单/双引号与模板串都收，${} 插值按占位符语义还原，
+    # 裸 fetch 首参（.vue 高发）：字面量与拼接表达式都收（表达式整段进 tokenizer——
+    # fetch(BASE + "/api/x") 这类标识符开头首参此前恒漏），${} 插值按占位符语义还原，
     # 纯字面量 backtick 当普通串——粗筛的 STR/REL 正则长期只见 ["']，模板串全通道双漏（实测）。
-    # 只收字面量首参，动态首参不猜。
-    for m in re.finditer(r'\bfetch\s*\(\s*((["\'`])(?:(?!\2)[^\\]|\\.){2,200}\2)', text):
-        toks = _tokenize_value(m.group(1))
+    # 对象首参（Request 构造/配置形态）跳过——本通道只吃 URL 串。纯动态首参（fetch(var)）
+    # 无静态段可提取，不猜（v2.39：字面量版正则放过表达式、真目标 call 直方图 0 的教训）。
+    for m in re.finditer(r'\bfetch\s*\(', text):
+        expr, arg_end = _first_arg_expr(text, m.end())
+        if not expr or expr.startswith("{"):
+            continue
+        arg_keys = _second_arg_keys(text, arg_end)   # fetch(url, {method,…}) 的键多为配置——收 params 类
+        toks = _tokenize_value(expr)
         raw, has_ph = rebuild_path(toks)
         if raw.startswith(("http://", "https://")):
             # 绝对 URL 拆基址+路径（同 url 通道）——旧版直接 normalize 产出 /https:/… 垃圾路径且丢失域外标注
@@ -709,10 +859,10 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                 recs.append({"接口路径": absr[1], "基路径": absr[0],
                              "请求方式": "?", "形态": "absolute",
                              "含占位符": "是" if has_ph else "否",
-                             "query": "", "参数名": "",
+                             "query": "", "参数名": arg_keys,
                              "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
                              "来源文件": os.path.basename(path),
-                             "值表达式": m.group(1)[:160]})
+                             "值表达式": expr[:160]})
             else:
                 stats["非接口剔除"] += 1
             continue
@@ -720,23 +870,34 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         if not p or p == "/" or "/" not in p \
                 or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
             continue
+        if re.fullmatch(r"/\{[^}]*\}", p):
+            stats["纯动态路径"] += 1        # 首参整个是变量/函数调用：拿不出静态段
+            continue
+        p, bres, sus = resolve_prefix(p, "", consts)
+        if p.startswith("/{"):
+            sus = (sus + "; " if sus else "") + "前缀占位符未解析（运行时变量/常量表外），静态后缀已保留"
         stats["fetch形态"] += 1
-        recs.append({"接口路径": p, "基路径": base_of(p),
+        recs.append({"接口路径": p, "基路径": bres or base_of(p),
                      "请求方式": "?", "形态": "fetch",
                      "含占位符": "是" if has_ph else "否",
-                     "query": ("?" + q) if q else "", "参数名": "",
-                     "可疑": "裸 fetch 首参字面量", "来源文件": os.path.basename(path),
-                     "值表达式": m.group(1)[:160]})
+                     "query": ("?" + q) if q else "", "参数名": arg_keys,
+                     "可疑": sus or "裸 fetch 首参", "来源文件": os.path.basename(path),
+                     "值表达式": expr[:160]})
 
-    # 框架调用点首参字面量（phase2 §3 规则 7）：axios.get / this.$http.get / this.http.get<T> /
+    # 框架调用点首参（phase2 §3 规则 7）：axios.get / this.$http.get / this.http.get<T> /
     # request.post——粗筛的宽松串正则只兜得住带 / 或 api 前缀的写法，this.$http.get("user/profile")
     # 这类无前缀相对路径两边都看不见（实测双漏，对账只 diff 粗筛∩精提兜不住双漏），必须成本通道。
-    # 只收字面量首参（含可选泛型参数 this.http.get<T>），动态首参不猜；模板串与 ${} 插值
-    # 走 tokenizer（插值→占位符）；\b 词边界拦 myrequest.get 这类前缀误命中。
+    # 首参字面量与拼接表达式都收（v2.39：axios.get(API_HOST + "/x") 标识符开头首参此前恒漏）；
+    # 对象首参跳过（配置形态归 url: 通道）；纯动态首参不猜；模板串与 ${} 插值走 tokenizer
+    # （插值→占位符）；\b 词边界拦 myrequest.get 这类前缀误命中。
+    # jQuery 裸 $（$.get 等）不进本正则——\b 无法置于 $ 前（两侧皆非词字符），紧随其后另有独立循环。
     for m in re.finditer(
-            r'\b(?:axios|\$?http|request)\s*\.\s*([a-z]+)(?:<[^>(]{0,40}>)?\s*\(\s*'
-            r'((["\'`])(?:(?!\3)[^\\]|\\.){2,200}\3)', text):
-        toks = _tokenize_value(m.group(2))
+            r'\b(?:axios|\$?http|request)\s*\.\s*([a-z]+)(?:<[^>(]{0,40}>)?\s*\(', text):
+        expr, arg_end = _first_arg_expr(text, m.end())
+        if not expr or expr.startswith("{"):
+            continue
+        arg_keys = _second_arg_keys(text, arg_end)   # 第二参对象键（axios 配置 params/data 子键优先）
+        toks = _tokenize_value(expr)
         raw, has_ph = rebuild_path(toks)
         if raw.startswith(("http://", "https://")):
             absr = _absolute_split(raw)   # 同 url/fetch 通道：绝对 URL 拆基址+路径，不产 /https:/ 垃圾
@@ -745,10 +906,10 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                 recs.append({"接口路径": absr[1], "基路径": absr[0],
                              "请求方式": (m.group(1) or "?").upper(), "形态": "absolute",
                              "含占位符": "是" if has_ph else "否",
-                             "query": "", "参数名": "",
+                             "query": "", "参数名": arg_keys,
                              "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
                              "来源文件": os.path.basename(path),
-                             "值表达式": m.group(2)[:160]})
+                             "值表达式": expr[:160]})
             else:
                 stats["非接口剔除"] += 1
             continue
@@ -758,13 +919,73 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                 or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
             stats["call噪声"] += 1
             continue
+        if re.fullmatch(r"/\{[^}]*\}", p):
+            stats["纯动态路径"] += 1        # 首参整个是变量/函数调用：拿不出静态段
+            continue
+        p, bres, sus = resolve_prefix(p, "", consts)
+        if p.startswith("/{"):
+            sus = (sus + "; " if sus else "") + "前缀占位符未解析（运行时变量/常量表外），静态后缀已保留"
         stats["call形态"] += 1
-        recs.append({"接口路径": p, "基路径": base_of(p),
+        recs.append({"接口路径": p, "基路径": bres or base_of(p),
                      "请求方式": (m.group(1) or "?").upper(), "形态": "call",
                      "含占位符": "是" if has_ph else "否",
-                     "query": ("?" + q) if q else "", "参数名": "",
-                     "可疑": "框架调用点（axios/$http/http/request）", "来源文件": os.path.basename(path),
-                     "值表达式": m.group(2)[:160]})
+                     "query": ("?" + q) if q else "", "参数名": arg_keys,
+                     "可疑": sus or "框架调用点（axios/$http/http/request）", "来源文件": os.path.basename(path),
+                     "值表达式": expr[:160]})
+
+    # jQuery 裸 $ 调用点（call 通道的 jQuery 分支）：$.get / $.post / $.getJSON / $.ajax——
+    # 国内传统企业站（WebForms/ezEIP 建站系统）业务 AJAX 的主流写法。此前被归入 S4 诚实边界，
+    # 但 $ 与 service.get 类「类别名实例」不同：它是固定、唯一、极高频的对象名，动词限死
+    # 四个 HTTP 动词后噪声可控（实测 5 条 label/ajax/*.aspx 端点全靠人工 grep 才找到，三闸全漏）。
+    # 后顾断言 (?<![A-Za-z0-9_$]) 拦 a$ / $$ / _$ 前缀误命中；首参字面量与拼接表达式都收
+    # （v2.39 真目标实测：$.get(_siteAppPath + "label/ajax/only.aspx?formid=" + …) 标识符
+    # 开头首参——字面量版正则恒 0 命中，静态后缀其实可提取，只有基址变量属诚实边界）；
+    # 对象首参（$.ajax({url:…}) 配置形态）跳过——url: 通道已覆盖，防同地址双计；
+    # getJSON→GET、ajax 首参形态方法不定记 ?。
+    for m in re.finditer(
+            r'(?<![A-Za-z0-9_$])\$\s*\.\s*(get|post|getJSON|ajax)\s*\(', text):
+        verb = m.group(1)
+        expr, arg_end = _first_arg_expr(text, m.end())
+        if not expr or expr.startswith("{"):
+            continue
+        method = "GET" if verb in ("get", "getJSON") else ("POST" if verb == "post" else "?")
+        arg_keys = _second_arg_keys(text, arg_end)   # $.post(url,{pageIndex:p}) 实参键——差分对照的参数名字典
+        toks = _tokenize_value(expr)
+        raw, has_ph = rebuild_path(toks)
+        if raw.startswith(("http://", "https://")):
+            absr = _absolute_split(raw)
+            if absr:
+                stats["绝对URL"] += 1
+                recs.append({"接口路径": absr[1], "基路径": absr[0],
+                             "请求方式": method, "形态": "absolute",
+                             "含占位符": "是" if has_ph else "否",
+                             "query": "", "参数名": arg_keys,
+                             "可疑": "绝对外链（域外基址），只记录不请求，需另行授权",
+                             "来源文件": os.path.basename(path),
+                             "值表达式": expr[:160]})
+            else:
+                stats["非接口剔除"] += 1
+            continue
+        p, q, _ = normalize(raw)
+        # 结果过滤同 call 通道：要像接口（有斜杠、无空格/CJK），挡掉 $("selector") 类文案首参
+        if not p or len(p) < 4 or "/" not in p \
+                or re.search(r"\s|[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]", p):
+            stats["call噪声"] += 1
+            continue
+        if re.fullmatch(r"/\{[^}]*\}", p):
+            stats["纯动态路径"] += 1        # 首参整个是变量/函数调用（$.get(urlVar)）：拿不出静态段
+            continue
+        p, bres, sus = resolve_prefix(p, "", consts)
+        if p.startswith("/{"):
+            sus = (sus + "; " if sus else "") + "前缀占位符未解析（运行时变量，基址不可静态解析属诚实边界），静态后缀已保留"
+        stats["call形态"] += 1
+        recs.append({"接口路径": p, "基路径": bres or base_of(p),
+                     "请求方式": method, "形态": "call",
+                     "含占位符": "是" if has_ph else "否",
+                     "query": ("?" + q) if q else "", "参数名": arg_keys,
+                     "可疑": sus or "jQuery 调用点（$.%s）" % verb,
+                     "来源文件": os.path.basename(path),
+                     "值表达式": expr[:160]})
 
     # 裸模板串字面量（形态=tpl）：无调用上下文的 `/api/v2/goods/${t.id}/comments`——fetch/call
     # 首参各有通道、`url:` 键与 hidden 变量各有所属，裸值三闸都不碰（曾靠诚实边界+人工补录

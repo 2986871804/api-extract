@@ -3,7 +3,8 @@
 r"""
 mine_responses.py —— 从阶段 3 已落盘的响应体中挖掘新接口（递归发现通道）
 
-什么是它：对 .body 文件执行五种模式提取，发现代码里没写死、由服务端下发的动态接口。
+什么是它：对 .body 文件执行六种模式提取（五种 JSON 形态 + 一种 HTML 链接形态），
+发现代码里没写死、由服务端下发的动态接口与页面路由。
 什么不是它：不发任何请求（纯本地 grep），不验证任何接口，不修改入口清单。
 
 安全设计（三道闸）：
@@ -28,6 +29,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from extract_endpoints import API_PREFIX, TEXT_EXTS  # noqa: E402
+from reconcile_list import url_to_path               # noqa: E402
+# 入口清单 URL 列是完整绝对地址（基址+路径）——去重基线必须先剥 scheme://host 再归一化，
+# 否则清单侧键折成 /https://host/… 与挖掘侧相对路径永不相等（v2.39 实测：30 条发现里
+# 26 条是已有条目却全部漏网通过）。url_to_path 与终清单对账（reconcile_list）同源同口径——
+# 「两侧归一化不对称」是同类事故第三案（v2.36 wss 假阳性、本案挖掘去重），不再自造第三份实现。
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -36,7 +42,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 # ---------------------------------------------------------------- 提取模式
-# 五种模式按特异性排序，同一路径命中多模式时取首个（计数仍全记）
+# 五种 JSON 模式按特异性排序，同一路径命中多模式时取首个（计数仍全记）
 PATTERNS = [
     ("error_echo", re.compile(
         r'"path"\s*:\s*"(/[^"]{2,200})"')),
@@ -49,6 +55,20 @@ PATTERNS = [
     ("nested_uri", re.compile(
         r'"(/[a-z]+/\d+/[a-z]+(?:/[^"]{0,100})?)"')),
 ]
+
+# HTML 链接形态（第六模式，独立函数不走 PATTERNS——过滤规则不同）：
+# 多页站（WebForms/传统企业站）的验证/探测响应是整页 HTML，JSON 五模式对它产出恒 0
+# （实测 1.15MB 搜索页里有大量链接，五模式零命中）。链接语义 = 页面路由线索，
+# 回流待批准清单后由人决定要不要抓页面提取其 JS——不是直接当接口。
+# 与 extract_endpoints html 通道同构：href/src/action/data-url、无引号形态也收；
+# 资产扩展名剔除；页面型后缀（.aspx/.ashx/.jsp/.php/.html…）保留。
+# 正则与提取器同坑同修（v2.40 #5，两轮迭代）：① 锚定标签内拦查询串 action=list；
+# ② 懒惰量词 + (?<![\w.]) 拦 onclick="this.src=…" 的伪属性——贪婪版在此处比提取器
+# 更惨：垃圾值 this.src+ 的伪后缀被本侧过滤静默拒收，真链接又被吞，整条零产出。
+HTML_LINK_RE = re.compile(
+    r'<[a-zA-Z][^<>]*?(?<![\w.])(?:href|src|action|data-url)\s*=\s*[\'"]?([^\'"\s>]{2,200})[\'"]?', re.I)
+# 页面型后缀（路由/处理器面），区别于 JS/CSS/图片资产——资产由 ASSET_RE 剔除
+PAGE_EXTS = ("aspx", "ashx", "asmx", "asp", "jsp", "php", "html", "htm", "do")
 
 # ---------------------------------------------------------------- 危险词
 # 这些词出现在路径中时标记「⚠高危」——不是因为脚本会触发它们（脚本零请求），
@@ -106,8 +126,46 @@ def is_valid_path(p):
     return True
 
 
+def is_valid_html_path(p):
+    """HTML 链接形态的过滤：末段允许一个页面型后缀（.aspx/.ashx/…）——is_valid_path
+    的字符集不含点，WebForms 处理器路径（label/ajax/x.aspx）会被整族拒掉。
+    末段无点号时回落 is_valid_path 同一判据（纯段页面路由）。"""
+    if not p or len(p) > 300 or " " in p:
+        return False
+    last = p.strip("/").rsplit("/", 1)[-1]
+    if "." in last:
+        stem, _, ext = last.rpartition(".")
+        if ext.lower() not in PAGE_EXTS or not stem:
+            return False                  # 资产或非法后缀（ASSET_RE 已挡常见资产，这里挡其余点号串）
+        head = p[:p.rfind("/")]           # 末段之前的全部路径段（单段页面为空串）
+        if head and not re.fullmatch(r"(/[a-zA-Z0-9_{}\-]+)+", head):
+            return False
+        return not ASSET_RE.search(p)
+    return is_valid_path(p)
+
+
+def _mine_html(text):
+    """HTML 响应的链接提取：返回 [(norm, raw, "html_link", line)]。
+    剔除：协议绝对/协议相对（挖掘产物只有路径列，绝对地址记录语义在提取侧不在挖掘侧）、
+    片段/脚本伪协议、资产扩展名、模板占位符（{xxx} 是 WebForms 模板语法不是路径）。"""
+    out = []
+    for m in HTML_LINK_RE.finditer(text):
+        raw = m.group(1).split("#")[0]
+        if not raw or raw.startswith(("http", "//", "javascript:", "mailto:",
+                                      "tel:", "data:", "{", "<", "?")):
+            continue
+        if "%" in raw[:2] or raw.startswith("./") or raw.startswith("../"):
+            continue                      # 相对寻址在无基址语境下不可解析，不猜
+        norm = normalize_path(raw)
+        if not is_valid_html_path(norm):
+            continue
+        line = text.count("\n", 0, m.start()) + 1
+        out.append((norm, raw, "html_link", line))
+    return out
+
+
 def mine_file(path):
-    """对一个 .body 文件执行五模式提取，返回 [(norm_path, raw_path, pattern, line_no)]"""
+    """对一个 .body 文件执行六模式提取（五 JSON + html 链接），返回 [(norm_path, raw_path, pattern, line_no)]"""
     try:
         text = open(path, encoding="utf-8", errors="replace").read()
     except OSError:
@@ -121,6 +179,13 @@ def mine_file(path):
                 continue
             line = text.count("\n", 0, m.start()) + 1
             out.append((norm, raw, pat_name, line))
+    # HTML 链接形态：JSON 模式零命中且文本是 HTML（含链接属性）时的自然数据源。
+    # 判据用「内容含链接属性」而非扩展名/内容嗅探——.body 文件没有扩展名语境，
+    # 服务端下发的 HTML 片段（表格/列表局部）同样该收。三个属性都查（v2.40 #5
+    # 复现时发现）：只认 href= 会漏纯 <img src=…> 片段——验证码处理器响应的典型形态。
+    low_text = text.lower()
+    if "href=" in low_text or "src=" in low_text or "action=" in low_text:
+        out += _mine_html(text)
     return out
 
 
@@ -135,12 +200,14 @@ def main():
     ap.add_argument("--log", help="控制台输出改写入该文件（UTF-8）")
     args = ap.parse_args()
 
-    # 已有条目（去重用）
+    # 已有条目（去重用）——URL 列先过 url_to_path 剥 scheme://host/query，再与挖掘侧同规归一化
     existing = set()
     if args.entry_list and os.path.isfile(args.entry_list):
         try:
             for r in csv.DictReader(open(args.entry_list, encoding="utf-8-sig")):
-                existing.add(normalize_path(r.get("URL", r.get("接口路径", ""))))
+                u = (r.get("URL") or r.get("接口路径") or "").strip()
+                if u:
+                    existing.add(normalize_path(url_to_path(u)))
         except Exception:
             pass
 
