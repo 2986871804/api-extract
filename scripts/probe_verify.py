@@ -3,24 +3,24 @@
 r"""
 probe_verify.py —— 白名单探测 / 验证请求执行器（把两类纪律最重的目标请求机械化）
 
-为什么要有它：safe_fetch 把下载的完整性、判定、侧车全包了，但白名单探测（phase2 §1.2）
-与验证请求（phase3）——证据规范要求最严的两类——长期靠每次现场手搓 curl 循环。
+为什么要有它：safe_fetch 把下载的完整性、判定、侧车全包了，但白名单探测（phase1 §1.2）
+与验证请求（phase2）——证据规范要求最严的两类——长期靠每次现场手搓 curl 循环。
 实测事故形态：状态码从响应文本里 grep（把 Date 头里的年份当状态码）、间隔靠 sleep 手写、
 三件套编号靠自觉复刻、24h 跨会话窗口护栏靠人脑合计。本脚本把这四类失误整类消除。
 
 两种模式（间隔/预算/重试/落盘规则全部对齐 SKILL.md「速率与预算总表」）：
 
-  --mode probe   阶段 2 白名单探测
+  --mode probe   阶段 1 白名单探测
       · 间隔 ≥2 秒（默认 2）；不重试；额度 ≤30 发/站点——按 24h 滚动窗口跨会话合计
         口径执行（含 catch-all 基线）：护栏机械化，按落盘目录既有 .headers 首行时间戳
         合计，本会话可用额度 = 预算 − 窗口既有，触线即停（时间戳不可读按窗口内计，
         宁拦勿漏；台账 = --out 目录，跨会话核对须复用同一落盘目录）
-      · 自动先打 catch-all 基线 GET /<随机串>-check-xyz（phase2 §1.4 第 1 步机械化），
+      · 自动先打 catch-all 基线 GET /<随机串>-check-xyz（phase1 §1.4 第 1 步机械化），
         200+HTML+>500B+无敏感关键词 ⇒ 判 catch-all 并在摘要中作废所有「200=命中」判定
       · 落盘 <out>/<路径名>.body + .headers（命名 = 探测路径去前导斜杠、/ 转 _，
-        点开头路径折 _dot_ 前缀，撞名加 __2 序号——phase2 §1.2 规则）；
+        点开头路径折 _dot_ 前缀，撞名加 __2 序号——phase1 §1.2 规则）；
         得响应的路径当场写入口清单（来源=PROBE）
-  --mode verify  阶段 3 验证请求
+  --mode verify  阶段 2 验证请求
       · 间隔 ≥3 秒（默认 3，条目间与同条重试间同距）；网络层失败 ≤2 次重试；
         业务响应（任意 HTTP 状态码，含 4xx/5xx）绝不重试（429 例外见判定表，脚本不代重试）
       · 会话 ≤50 发 + 跨会话滚动 24h 窗口合计 ≤100 发——护栏机械化：按落盘目录既有
@@ -35,7 +35,7 @@ probe_verify.py —— 白名单探测 / 验证请求执行器（把两类纪律
     年份当状态码）
   · 范围硬边界机械化（硬性规则 6）：路径清单里的完整 URL 若 host 不属于 --base 的
     host 或其子域，跳过并出声——兄弟域/第三方域不请求
-  · 脚本不改入口清单、不落判定结论；摘要中的「判定提示」只是 phase3 判定表的行定位
+  · 脚本不改入口清单、不落判定结论；摘要中的「判定提示」只是 phase2 判定表的行定位
     提示，结论由执行者按判定表落
 
 用法：
@@ -75,7 +75,7 @@ MODE_BUDGET = {"probe": 30, "verify": 50}             # 探测 ≤30/站点；�
 VERIFY_WINDOW_HOURS = 24
 VERIFY_WINDOW_MAX = 100                               # 跨会话滚动窗口合计上限
 
-# catch-all 判据的敏感关键词（phase2 §1.4：命中任一 ⇒ 不是 catch-all 的通用页）
+# catch-all 判据的敏感关键词（phase1 §1.4：命中任一 ⇒ 不是 catch-all 的通用页）
 CATCHALL_SENSITIVE = ("登录", "密码", "token", "error", "异常", "login", "password")
 
 VERIFY_NUM_RE = re.compile(r"^(\d{3,})\.body$")
@@ -139,7 +139,7 @@ def host_in_scope(url_host, base_host):
 
 
 def probe_filename(path, used):
-    """phase2 §1.2 命名：去前导斜杠、/ 转 _，非 [A-Za-z0-9._-] 字符折成 _；撞名加 __2 序号。
+    """phase1 §1.2 命名：去前导斜杠、/ 转 _，非 [A-Za-z0-9._-] 字符折成 _；撞名加 __2 序号。
     点开头路径折 _dot_ 前缀（/.env → _dot_env）——否则落盘成隐藏文件，ls 默认不显示，
     证据文件会被数漏（真目标实测：/.well-known/security.txt → .well-known_security.txt.*）。"""
     name = path.split("?")[0].lstrip("/").replace("/", "_")
@@ -217,7 +217,7 @@ def probe_effective_budget(out_dir, budget, now):
 
 
 def is_catchall(status, headers, body):
-    """phase2 §1.4 第 1 步：200 + HTML + >500B + 无敏感关键词 ⇒ catch-all。"""
+    """phase1 §1.4 第 1 步：200 + HTML + >500B + 无敏感关键词 ⇒ catch-all。"""
     if status != 200 or body is None or len(body) <= 500:
         return False
     ctype = (headers.get("Content-Type") or headers.get("content-type") or "").lower()
@@ -228,7 +228,7 @@ def is_catchall(status, headers, body):
 
 
 def verdict_hint(status, headers, size, catchall):
-    """phase3 判定表的行定位提示（只是提示——结论由执行者按判定表落，脚本不落结论）。"""
+    """phase2 判定表的行定位提示（只是提示——结论由执行者按判定表落，脚本不落结论）。"""
     if status is None:
         return "网络层失败 ≠ 判定结论：状态改未确认、验证结果留空"
     loc = headers.get("Location") or headers.get("location")
@@ -344,7 +344,7 @@ def main():
         description="白名单探测 / 验证请求执行器（间隔、落盘、编号、窗口护栏全部机械化；"
                     "只发 GET/HEAD/OPTIONS，禁跟随重定向）")
     ap.add_argument("--mode", default=None, choices=["probe", "verify"],
-                    help="probe=阶段2白名单探测；verify=阶段3验证请求（--register-manual 流程下可省）")
+                    help="probe=阶段1白名单探测；verify=阶段2验证请求（--register-manual 流程下可省）")
     ap.add_argument("--base", default="", help="站点基址，如 https://www.example.com")
     ap.add_argument("--paths", default=None, help="路径清单文件：每行 /路径 或完整 URL")
     ap.add_argument("--out", required=True,
@@ -476,7 +476,7 @@ def main():
                             "状态": st, "字节": len(body or b""), "提示": "catch-all 基线"})
             if catchall:
                 print("⚠⚠ 本站是 catch-all（任意路径 200+HTML）——本站所有「200=命中」判定作废，"
-                      "只能靠内容特征判（phase2 §1.4）")
+                      "只能靠内容特征判（phase1 §1.4）")
             else:
                 print("基线非 catch-all（状态 %s）——200 判定可用" % st)
         time.sleep(gap)
@@ -564,7 +564,7 @@ def main():
         L.append("会话额度：本发 %d / 上限 %d；24h 窗口合计：既有 %d（时间戳不可读 %d 已按窗口内计）+ 本发 %d，上限 %d"
                  % (sent, budget, window_used, window_unreadable, sent, VERIFY_WINDOW_MAX))
         L.append("三件套落盘于 %s（编号自既有最大续起，跨会话不重置）；.headers 首行时间戳供窗口核对。" % args.out)
-    L.append("「提示」列只是 phase3 判定表的行定位——结论必须打开响应体按判定表落，脚本不代落。")
+    L.append("「提示」列只是 phase2 判定表的行定位——结论必须打开响应体按判定表落，脚本不代落。")
     L.append("")
     L.append("%-6s %-40s %-8s %-8s %-9s %s" % ("状态", "目标", "方法", "字节", "编号/文件", "提示"))
     for r in results:

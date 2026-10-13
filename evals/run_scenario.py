@@ -152,7 +152,7 @@ chk("S2 去重总数恰为 %d（23 planted + WS_HOST 裸字面量 + concat 双�
     len(dedup) == len(PLANTED) + 2)
 chk("S3 二进制边界：伪装 .js 被嗅探跳过，埋点接口缺席",
     "/api/bin/leak" not in paths and stats.get("二进制跳过") == 1)
-chk("S4 别名实例双漏在场（与 phase2 §3 诚实边界一致）", "/api/alias/miss" not in paths)
+chk("S4 别名实例双漏在场（与 phase1 §3 诚实边界一致）", "/api/alias/miss" not in paths)
 chk("S5 无协议折叠垃圾行（/wss:/ /https:/ /http:/ 前缀零出现）",
     not any(p.startswith(("/wss:/", "/https:/", "/http:/")) for p in paths))
 _abs = [r for r in dedup.values() if r["接口路径"] == "/v9/partner/data"]

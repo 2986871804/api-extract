@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 r"""
-mine_responses.py —— 从阶段 3 已落盘的响应体中挖掘新接口（递归发现通道）
+mine_responses.py —— 从阶段 2 已落盘的响应体中挖掘新接口（递归发现通道）
 
 什么是它：对 .body 文件执行六种模式提取（五种 JSON 形态 + 一种 HTML 链接形态），
 发现代码里没写死、由服务端下发的动态接口与页面路由。
@@ -192,7 +192,7 @@ def mine_file(path):
 def main():
     ap = argparse.ArgumentParser(
         description="响应体挖掘：从已落盘的 .body 文件中发现新接口（零请求，离线）")
-    ap.add_argument("--dir", required=True, help="阶段 3 落盘的 .body 文件目录")
+    ap.add_argument("--dir", required=True, help="阶段 2 落盘的 .body 文件目录")
     ap.add_argument("--entry-list", help="已有入口清单 CSV——传入时与已有条目去重")
     ap.add_argument("--site", default="-", help="站点归属")
     ap.add_argument("--csv", help="新发现 CSV（UTF-8 BOM）")
@@ -261,7 +261,7 @@ def main():
 
     L.append("")
     L.append("⚠ 本脚本零网络请求，只发现不验证。全部产出状态=待批准——")
-    L.append("  agent 须将此清单呈报用户，用户点名后方可进入阶段 3 验证。")
+    L.append("  agent 须将此清单呈报用户，用户点名后方可进入阶段 2 验证。")
     L.append("  高危标记（export/delete/callback 等）是额外参考信息，不替用户做决定。")
 
     out_text = "\n".join(L)

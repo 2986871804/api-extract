@@ -285,7 +285,7 @@ chk("C44 url: 冒号键仍归 url: 通道，hidden 不双计",
     ("/onlyurlkey/x", ee.base_of("/onlyurlkey/x"), "?", "url") in idx
     and not any(r["形态"] == "hidden:url" and "onlyurlkey" in r["值表达式"] for r in recs))
 # C45 调用第二参参数名（真目标反判事故的机械化防线：分页真名只在 $.post 第二参里，
-# page/rows 试探得出「参数被忽略」假阴性、可枚举库差点标安全——phase3 判定表
+# page/rows 试探得出「参数被忽略」假阴性、可枚举库差点标安全——phase2 判定表
 # 「差分对照无差异」行的上游数据源）
 pf = os.path.join(tmp, "params.js")
 w(pf, '$.post("/label/ajax/paged.aspx", {pageIndex: p, pageSize: s, columnId: c});\n'

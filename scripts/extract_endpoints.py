@@ -542,7 +542,7 @@ def rebuild_path(toks):
     """字面量原样保留、动态段变 {占位符}；返回 (路径, 是否含占位符)。
     纯拼接运算符（字面量之间只含 + 与空白的 dyn token）直接丢弃——合法 JS 里
     字面量间的裸 + 只有字符串拼接一种解释，确定性还原不产占位符；{expr} 的语义
-    是"需填写的动态段"，把空拼接点标成占位符会让阶段 3 拿必 404 的假路径去探测。"""
+    是"需填写的动态段"，把空拼接点标成占位符会让阶段 2 拿必 404 的假路径去探测。"""
     parts, has_ph = [], False
     for kind, v in toks:
         if kind == "lit":
@@ -643,7 +643,7 @@ def extract_file(path, hidden=False, stats=None, consts=None):
         mm = METHOD_RE.search(obj)
         method = mm.group(1).strip().upper() if mm and mm.group(1).strip() else "?"
         rel = os.path.basename(path)
-        # 绝对 URL 不是噪声：拆 基址+路径 落清单（phase2 §5 承诺"第三方域/兄弟域接口只记录，需另行授权"）；
+        # 绝对 URL 不是噪声：拆 基址+路径 落清单（phase1 §5 承诺"第三方域/兄弟域接口只记录，需另行授权"）；
         # 无路径的裸域（https://x.com/）仍走剔除计数。http 形态在此全权处理，
         # 故下方非接口过滤不再含 http 分支
         if raw.startswith(("http://", "https://")):
@@ -884,7 +884,7 @@ def extract_file(path, hidden=False, stats=None, consts=None):
                      "可疑": sus or "裸 fetch 首参", "来源文件": os.path.basename(path),
                      "值表达式": expr[:160]})
 
-    # 框架调用点首参（phase2 §3 规则 7）：axios.get / this.$http.get / this.http.get<T> /
+    # 框架调用点首参（phase1 §3 规则 7）：axios.get / this.$http.get / this.http.get<T> /
     # request.post——粗筛的宽松串正则只兜得住带 / 或 api 前缀的写法，this.$http.get("user/profile")
     # 这类无前缀相对路径两边都看不见（实测双漏，对账只 diff 粗筛∩精提兜不住双漏），必须成本通道。
     # 首参字面量与拼接表达式都收（v2.39：axios.get(API_HOST + "/x") 标识符开头首参此前恒漏）；

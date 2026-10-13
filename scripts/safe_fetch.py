@@ -216,7 +216,7 @@ def main():
         print("  需处理：%s" % ", ".join("%s=%s" % (r["file"], r["verdict"]) for r in retry))
     if not retry and not det:
         print("  ✅ 全部完整" + ("（%d 个 chunked 不可校验）" % len(chunked) if chunked else ""))
-    # 判定报告 read-modify-write：二跳补抓就是往同一 --out 目录跑第二轮（phase2 §2 规定工作流），
+    # 判定报告 read-modify-write：二跳补抓就是往同一 --out 目录跑第二轮（phase1 §2 规定工作流），
     # "w" 整写会让第一轮的判定凭空消失——残缺文件静默回到提取范围。按 (file, url) 合并保留。
     rpt_path = os.path.join(args.out, "_fetch_report.json")
     merged = {}

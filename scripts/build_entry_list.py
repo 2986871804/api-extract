@@ -214,7 +214,7 @@ def main():
              % (stats["精提行"], stats["PROBE行"], stats["去重合并"],
                 stats["页面路由升级"], stats["跨站冲突"]),
              "合计 %d 行 → %s" % (len(rows), args.out),
-             "判定表落位/验证结果由执行者按 phase3 判定表填——脚本不代落结论。"]
+             "判定表落位/验证结果由执行者按 phase2 判定表填——脚本不代落结论。"]
     text = "\n".join(lines)
     if args.log:
         with open(args.log, "w", encoding="utf-8") as f:
